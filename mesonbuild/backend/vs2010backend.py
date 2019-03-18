@@ -122,7 +122,7 @@ class Vs2010Backend(backends.Backend):
                         sole_output = ''
                     curfile = infilelist[i]
                     infilename = os.path.join(down, curfile.rel_to_builddir(self.build_to_src))
-                    base_args = generator.get_arglist(infilename)
+                    base_args = generator.get_arglist(infilename, self.build_to_src)
                     outfiles_rel = genlist.get_outputs_for(curfile)
                     outfiles = [os.path.join(target_private_dir, of) for of in outfiles_rel]
                     generator_output_files += outfiles

@@ -690,7 +690,9 @@ executable or one returned by find_program. Keyword arguments are the
 following:
 
 - `arguments` a list of template strings that will be the command line
-  arguments passed to the executable
+  arguments passed to the executable.  Starting with v0.51.0,
+  `arguments` can also include [files objects]((#files) or
+  [custom targets]((#custom_target).
 - `depfile` is a template string pointing to a dependency file that a
   generator can write listing all the additional files this target
   depends on, for example a C compiler would list all the header files

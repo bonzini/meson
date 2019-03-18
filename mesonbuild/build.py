@@ -1255,15 +1255,7 @@ class Generator:
     def process_kwargs(self, kwargs):
         if 'arguments' not in kwargs:
             raise InvalidArguments('Generator must have "arguments" keyword argument.')
-        args = kwargs['arguments']
-        if isinstance(args, str):
-            args = [args]
-        if not isinstance(args, list):
-            raise InvalidArguments('"Arguments" keyword argument must be a string or a list of strings.')
-        for a in args:
-            if not isinstance(a, str):
-                raise InvalidArguments('A non-string object in "arguments" keyword argument.')
-        self.arglist = args
+        self.arglist = get_build_target_files(listify(kwargs['arguments']))
         if 'output' not in kwargs:
             raise InvalidArguments('Generator must have "output" keyword argument.')
         outputs = listify(kwargs['output'])
@@ -1305,10 +1297,12 @@ class Generator:
         basename = os.path.splitext(plainname)[0]
         return self.depfile.replace('@BASENAME@', basename).replace('@PLAINNAME@', plainname)
 
-    def get_arglist(self, inname):
+    def get_arglist(self, inname, build_to_src):
         plainname = os.path.basename(inname)
         basename = os.path.splitext(plainname)[0]
-        return [x.replace('@BASENAME@', basename).replace('@PLAINNAME@', plainname) for x in self.arglist]
+        return [x.replace('@BASENAME@', basename).replace('@PLAINNAME@', plainname)
+                if isinstance(x, str) else x.rel_to_builddir(build_to_src)
+                for x in self.arglist]
 
     def is_parent_path(self, parent, trial):
         relpath = pathlib.PurePath(trial).relative_to(parent)
@@ -1339,7 +1333,7 @@ class GeneratedList:
         self.infilelist = []
         self.outfilelist = []
         self.outmap = {}
-        self.extra_depends = []
+        self.extra_depends = [x for x in generator.arglist if isinstance(x, File)]
         self.preserve_path_from = preserve_path_from
         self.extra_args = extra_args
 
@@ -1361,6 +1355,9 @@ class GeneratedList:
         self.outfilelist += outfiles
         self.outmap[newfile] = outfiles
 
+    def get_extra_depends(self, build_to_src):
+        return [i.rel_to_builddir(build_to_src) for i in self.extra_depends]
+
     def get_inputs(self):
         return self.infilelist
 
@@ -1375,6 +1372,9 @@ class GeneratedList:
 
     def get_extra_args(self):
         return self.extra_args
+
+    def get_subdir(self):
+        return self.subdir
 
 class Executable(BuildTarget):
     known_kwargs = known_exe_kwargs
@@ -2279,6 +2279,23 @@ class TestSetup:
         self.gdb = gdb
         self.timeout_multiplier = timeout_multiplier
         self.env = env
+
+def get_build_target_files(sources):
+    '''
+    For the specified list of @sources which can be strings, Files, or targets,
+    get File objects for everything that is not a string.
+    '''
+    files = []
+    for s in sources:
+        if hasattr(s, 'held_object'):
+            s = s.held_object
+        if isinstance(s, (str, File)):
+            files.append(s)
+        elif isinstance(s, (BuildTarget, CustomTarget, CustomTargetIndex)):
+            files += [File.from_built_file(s.get_subdir(), x) for x in s.get_outputs()]
+        else:
+            raise AssertionError('Unknown source type: {!r}'.format(s))
+    return files
 
 def get_sources_string_names(sources):
     '''
