@@ -2233,7 +2233,9 @@ an executable (e.g. `idl` files into source code and headers).
 
 * `process(list_of_files, ...)` takes a list of files, causes them to
   be processed and returns an object containing the result which can
-  then, for example, be passed into a build target definition. The
+  then, for example, be passed into a build target definition.
+  Starting with v0.51.0, arguments to `process` can also be
+  [files objects]((#files) or [custom targets]((#custom_target).  The
   keyword argument `extra_args`, if specified, will be used to replace
   an entry `@EXTRA_ARGS@` in the argument list. The keyword argument
   `preserve_path_from`, if given, specifies that the output files need

@@ -1310,11 +1310,9 @@ class Generator:
 
     def process_files(self, name, files, state, preserve_path_from=None, extra_args=[]):
         output = GeneratedList(self, state.subdir, preserve_path_from, extra_args=extra_args)
-        for f in files:
+        for f in get_build_target_files(files):
             if isinstance(f, str):
                 f = File.from_source_file(state.environment.source_dir, state.subdir, f)
-            elif not isinstance(f, File):
-                raise InvalidArguments('{} arguments must be strings or files not {!r}.'.format(name, f))
             if preserve_path_from:
                 abs_f = f.absolute_path(state.environment.source_dir, state.environment.build_dir)
                 if not self.is_parent_path(preserve_path_from, abs_f):
