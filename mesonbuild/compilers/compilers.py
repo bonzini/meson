@@ -681,7 +681,7 @@ class Compiler(metaclass=abc.ABCMeta):
             # On Windows antivirus programs and the like hold on to files so
             # they can't be deleted. There's not much to do in this case. Also,
             # catch OSError because the directory is then no longer empty.
-            pass
+            yield None
 
     @contextlib.contextmanager
     def cached_compile(self, code, cdata: coredata.CoreData, *, extra_args=None, mode: str = 'link', temp_dir=None):
