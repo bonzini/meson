@@ -26,12 +26,12 @@ from .dependencies import ExternalProgram
 from .dependencies import InternalDependency, Dependency, NotFoundDependency, DependencyException
 from .depfile import DepFile
 from .interpreterbase import InterpreterBase
-from .interpreterbase import check_stringlist, flatten, noPosargs, noKwargs, stringArgs, permittedKwargs, noArgsFlattening
+from .interpreterbase import check_stringlist, flatten, noPosargs, noKwargs, stringArgs, permittedKwargs, noArgsFlattening, posArgsProcessing
 from .interpreterbase import InterpreterException, InvalidArguments, InvalidCode, SubdirDoneRequest
 from .interpreterbase import InterpreterObject, MutableInterpreterObject, Disabler, disablerIfNotFound
 from .interpreterbase import FeatureNew, FeatureDeprecated, FeatureNewKwargs, FeatureDeprecatedKwargs
 from .interpreterbase import ObjectHolder, MesonVersionString
-from .interpreterbase import TYPE_var, TYPE_nkwargs
+from .interpreterbase import TYPE_var, TYPE_nkwargs, TYPE_nvar
 from .modules import ModuleReturnValue, ExtensionModule
 from .cmake import CMakeInterpreter
 from .backend.backends import TestProtocol, Backend
@@ -54,6 +54,26 @@ permitted_method_kwargs = {
     'partial_dependency': {'compile_args', 'link_args', 'links', 'includes',
                            'sources'},
 }
+
+class GlobList(list):
+    pass
+
+def flatten_check_glob(args: T.Union[TYPE_nvar, T.List[TYPE_nvar]]) -> T.List[TYPE_nvar]:
+    if not isinstance(args, collections.abc.Sequence):
+        return flatten(args)
+    result = []  # type: T.List[TYPE_nvar]
+    for a in args:
+        if isinstance(a, list):
+            if isinstance(a, GlobList):
+                mlog.warning('Using fs.expandglob to build source lists is a bad idea',
+                             once=True)
+            rest = flatten_check_glob(a)
+            result = result + rest
+        elif isinstance(a, mparser.StringNode):
+            result.append(a.value)
+        else:
+            result.append(a)
+    return result
 
 def stringifyUserArguments(args):
     if isinstance(args, list):
@@ -2517,7 +2537,10 @@ class Interpreter(InterpreterBase):
 
     def holderify(self, item):
         if isinstance(item, list):
-            return [self.holderify(x) for x in item]
+            # List comprehensions are faster than generators
+            if type(item) is list:
+                return [self.holderify(x) for x in item]
+            return type(item)((self.holderify(x) for x in item))
         if isinstance(item, dict):
             return {k: self.holderify(v) for k, v in item.items()}
 
@@ -3876,14 +3899,17 @@ external dependencies (including libraries) must go to "dependencies".''')
     @FeatureNewKwargs('executable', '0.56.0', ['win_subsystem'])
     @FeatureDeprecatedKwargs('executable', '0.56.0', ['gui_app'], extra_message="Use 'win_subsystem' instead.")
     @permittedKwargs(permitted_kwargs['executable'])
+    @posArgsProcessing(flatten_check_glob)
     def func_executable(self, node, args, kwargs):
         return self.build_target(node, args, kwargs, ExecutableHolder)
 
     @permittedKwargs(permitted_kwargs['static_library'])
+    @posArgsProcessing(flatten_check_glob)
     def func_static_lib(self, node, args, kwargs):
         return self.build_target(node, args, kwargs, StaticLibraryHolder)
 
     @permittedKwargs(permitted_kwargs['shared_library'])
+    @posArgsProcessing(flatten_check_glob)
     def func_shared_lib(self, node, args, kwargs):
         holder = self.build_target(node, args, kwargs, SharedLibraryHolder)
         holder.held_object.shared_library_only = True
@@ -3895,19 +3921,23 @@ external dependencies (including libraries) must go to "dependencies".''')
 
     @FeatureNew('shared_module', '0.37.0')
     @permittedKwargs(permitted_kwargs['shared_module'])
+    @posArgsProcessing(flatten_check_glob)
     def func_shared_module(self, node, args, kwargs):
         return self.build_target(node, args, kwargs, SharedModuleHolder)
 
     @permittedKwargs(permitted_kwargs['library'])
+    @posArgsProcessing(flatten_check_glob)
     def func_library(self, node, args, kwargs):
         return self.build_library(node, args, kwargs)
 
     @permittedKwargs(permitted_kwargs['jar'])
+    @posArgsProcessing(flatten_check_glob)
     def func_jar(self, node, args, kwargs):
         return self.build_target(node, args, kwargs, JarHolder)
 
     @FeatureNewKwargs('build_target', '0.40.0', ['link_whole', 'override_options'])
     @permittedKwargs(permitted_kwargs['build_target'])
+    @posArgsProcessing(flatten_check_glob)
     def func_build_target(self, node, args, kwargs):
         if 'target_type' not in kwargs:
             raise InterpreterException('Missing target_type keyword argument')
@@ -4815,6 +4845,7 @@ Try setting b_lundef to false instead.'''.format(self.coredata.base_options['b_s
             self.coredata.target_guids[idname] = str(uuid.uuid4()).upper()
 
     @FeatureNew('both_libraries', '0.46.0')
+    @posArgsProcessing(flatten_check_glob)
     def build_both_libraries(self, node, args, kwargs):
         shared_holder = self.build_target(node, args, kwargs, SharedLibraryHolder)
 
@@ -4865,7 +4896,7 @@ Try setting b_lundef to false instead.'''.format(self.coredata.base_options['b_s
         name, *sources = args
         for_machine = self.machine_from_native_kwarg(kwargs)
         if 'sources' in kwargs:
-            sources += listify(kwargs['sources'])
+            sources += flatten_check_glob([kwargs['sources']])
         sources = self.source_strings_to_files(sources)
         objs = extract_as_list(kwargs, 'objects')
         kwargs['dependencies'] = extract_as_list(kwargs, 'dependencies')

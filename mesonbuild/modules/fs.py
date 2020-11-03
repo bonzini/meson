@@ -21,6 +21,7 @@ from . import ExtensionModule
 from . import ModuleReturnValue
 from ..mesonlib import MesonException
 from ..interpreterbase import FeatureNew
+from ..interpreter import GlobList
 
 from ..interpreterbase import stringArgs, noKwargs
 if T.TYPE_CHECKING:
@@ -85,7 +86,8 @@ class FSModule(ExtensionModule):
                 result.update(str(x) for x in drive.glob(p))
             else:
                 result.update(str(x.relative_to(base)) for x in base.glob(p))
-        return ModuleReturnValue(sorted(result), [])
+        result = GlobList(sorted(result))
+        return ModuleReturnValue(result, [])
 
     @stringArgs
     @noKwargs

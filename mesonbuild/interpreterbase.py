@@ -51,8 +51,7 @@ class InterpreterObject:
             ) -> TYPE_var:
         if method_name in self.methods:
             method = self.methods[method_name]
-            if not getattr(method, 'no-args-flattening', False):
-                args = flatten(args)
+            args = getattr(method, 'posargs-processing', flatten)(args)
             return method(args, kwargs)
         raise InvalidCode('Unknown method "%s" in object.' % method_name)
 
@@ -197,9 +196,15 @@ def stringArgs(f: TV_func) -> TV_func:
         return f(*wrapped_args, **wrapped_kwargs)
     return T.cast(TV_func, wrapped)
 
-def noArgsFlattening(f: TV_func) -> TV_func:
-    setattr(f, 'no-args-flattening', True)  # noqa: B010
-    return f
+class posArgsProcessing:
+    def __init__(self, func: T.Callable[[T.List[T.Any]], T.List[T.Any]]):
+        self.func = func
+
+    def __call__(self, f: TV_func) -> TV_func:
+        setattr(f, 'posargs-processing', self.func)  # noqa: B010
+        return f
+
+noArgsFlattening = posArgsProcessing(lambda x: x)
 
 def disablerIfNotFound(f: TV_func) -> TV_func:
     @wraps(f)
