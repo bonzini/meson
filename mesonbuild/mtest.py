@@ -22,7 +22,6 @@ import asyncio
 import contextlib
 import datetime
 import enum
-import io
 import json
 import multiprocessing
 import os
@@ -257,6 +256,13 @@ class TAPParser:
                 yield self.Error('invalid directive "{}"'.format(directive,))
 
         yield self.Test(num, name, TestResult.OK if ok else TestResult.FAIL, explanation)
+
+    async def parse_async(self, lines: T.AsyncIterator[str]) -> T.AsyncIterator[TYPE_TAPResult]:
+        async for line in lines:
+            for event in self.parse_line(line):
+                yield event
+        for event in self.parse_line(None):
+            yield event
 
     def parse(self, io: T.Iterator[str]) -> T.Iterator[TYPE_TAPResult]:
         for line in io:
@@ -719,20 +725,22 @@ class TestRun:
         self.complete(res, [], returncode, stdo, stde, cmd, **kwargs)
 
     @staticmethod
-    def parse_tap(stdo: str, verbose: bool) -> T.Tuple[TestResult, T.List[TestResult], str]:
+    async def parse_tap(stdo: asyncio.StreamReader, verbose: bool) -> T.Tuple[TestResult, T.List[TestResult], str]:
         res = None    # type: T.Optional[TestResult]
         results = []  # type: T.List[TestResult]
         failed = False
         error = ''
 
-        # Print lines along the way if requested
-        def lines() -> T.Iterator[str]:
-            for line in io.StringIO(stdo):
+        # Extract lines out of the StreamReader and print them
+        # along the way if requested
+        async def lines() -> T.AsyncIterator[str]:
+            while not stdo.at_eof():
+                line = decode(await stdo.readline())
                 if verbose:
                     print(line, end='')
                 yield line
 
-        for i in TAPParser().parse(lines()):
+        async for i in TAPParser().parse_async(lines()):
             if isinstance(i, TAPParser.Bailout):
                 results.append(TestResult.ERROR)
                 failed = True
@@ -1062,7 +1070,7 @@ class SingleTestRunner:
         else:
             timeout = self.test.timeout
 
-        stdo_task = stde_task = None
+        stdo_task = stde_task = tap_task = None
         async with self._run_subprocess(cmd + extra_cmd,
                                         timeout=timeout,
                                         stdout=stdout,
@@ -1073,7 +1081,9 @@ class SingleTestRunner:
             # start background tasks to read from pipes, and let
             # __aexit__ wait for the subprocess to finish.
             p = p_
-            if stdout is not None:
+            if self.test.protocol is TestProtocol.TAP:
+                tap_task = TestRun.parse_tap(p.stdout, self.options.verbose)
+            elif stdout is not None:
                 stdo_task = p.stdout.read(-1)
             if stderr is not None and stderr != asyncio.subprocess.STDOUT:
                 stde_task = p.stderr.read(-1)
@@ -1086,7 +1096,7 @@ class SingleTestRunner:
             stde = p.additional_error
 
         if self.test.protocol is TestProtocol.TAP:
-            res, results, error = TestRun.parse_tap(stdo, self.options.verbose)
+            res, results, error = await tap_task
             if error:
                 stde += error
             self.runobj.complete_tap(p.returncode, p.result or res, results, stde, cmd)
