@@ -194,6 +194,9 @@ class TestResult(enum.Enum):
         return self in (TestResult.FAIL, TestResult.TIMEOUT, TestResult.INTERRUPT,
                         TestResult.UNEXPECTEDPASS, TestResult.ERROR)
 
+    def was_killed(self) -> bool:
+        return self in (TestResult.TIMEOUT, TestResult.INTERRUPT)
+
     def get_text(self, colorize: bool) -> str:
         result_str = '{res:{reslen}}'.format(res=self.value, reslen=self.maxlen())
         decorator = mlog.plain
@@ -715,12 +718,21 @@ class TestRun:
             res = TestResult.FAIL if bool(returncode) else TestResult.OK
         self.complete(res, [], returncode, stdo, stde, cmd, **kwargs)
 
-    def complete_tap(self, returncode: int, stdo: str, stde: str, cmd: T.List[str]) -> None:
+    @staticmethod
+    def parse_tap(stdo: str, verbose: bool) -> T.Tuple[TestResult, T.List[TestResult], str]:
         res = None    # type: T.Optional[TestResult]
         results = []  # type: T.List[TestResult]
         failed = False
+        error = ''
 
-        for i in TAPParser().parse(io.StringIO(stdo)):
+        # Print lines along the way if requested
+        def lines() -> T.Iterator[str]:
+            for line in io.StringIO(stdo):
+                if verbose:
+                    print(line, end='')
+                yield line
+
+        for i in TAPParser().parse(lines()):
             if isinstance(i, TAPParser.Bailout):
                 results.append(TestResult.ERROR)
                 failed = True
@@ -730,24 +742,27 @@ class TestRun:
                     failed = True
             elif isinstance(i, TAPParser.Error):
                 results.append(TestResult.ERROR)
-                stde += '\nTAP parsing error: ' + i.message
+                error = '\nTAP parsing error: ' + i.message
                 failed = True
 
-        if returncode != 0:
+        # Now determine the overall result of the test based on the outcome of the subcases
+        if all(t is TestResult.SKIP for t in results):
+            # This includes the case where num_tests is zero
+            res = TestResult.SKIP
+        else:
+            res = TestResult.FAIL if failed else TestResult.OK
+
+        return res, results, error
+
+    def complete_tap(self, returncode: int, res: TestResult, results: T.List[TestResult],
+                     stde: str, cmd: T.List[str]) -> None:
+        if self.should_fail and res in (TestResult.OK, TestResult.FAIL):
+            res = TestResult.UNEXPECTEDPASS if res.is_ok() else TestResult.EXPECTEDFAIL
+        if returncode != 0 and not res.was_killed():
             res = TestResult.ERROR
             stde += '\n(test program exited with status code {})'.format(returncode,)
 
-        if res is None:
-            # Now determine the overall result of the test based on the outcome of the subcases
-            if all(t is TestResult.SKIP for t in results):
-                # This includes the case where num_tests is zero
-                res = TestResult.SKIP
-            elif self.should_fail:
-                res = TestResult.EXPECTEDFAIL if failed else TestResult.UNEXPECTEDPASS
-            else:
-                res = TestResult.FAIL if failed else TestResult.OK
-
-        self.complete(res, results, returncode, stdo, stde, cmd)
+        self.complete(res, results, returncode, '', stde, cmd)
 
     def complete(self, res: TestResult, results: T.List[TestResult],
                  returncode: int,
@@ -1069,17 +1084,19 @@ class SingleTestRunner:
         if p.additional_error is not None:
             stdo = ''
             stde = p.additional_error
-        if p.result:
+
+        if self.test.protocol is TestProtocol.TAP:
+            res, results, error = TestRun.parse_tap(stdo, self.options.verbose)
+            if error:
+                stde += error
+            self.runobj.complete_tap(p.returncode, p.result or res, results, stde, cmd)
+
+        elif p.result:
             self.runobj.complete(p.result, [], p.returncode, stdo, stde, cmd)
-        else:
-            if self.test.protocol is TestProtocol.EXITCODE:
-                self.runobj.complete_exitcode(p.returncode, stdo, stde, cmd)
-            elif self.test.protocol is TestProtocol.GTEST:
-                self.runobj.complete_gtest(p.returncode, stdo, stde, cmd)
-            else:
-                if self.options.verbose:
-                    print(stdo, end='')
-                self.runobj.complete_tap(p.returncode, stdo, stde, cmd)
+        elif self.test.protocol is TestProtocol.EXITCODE:
+            self.runobj.complete_exitcode(p.returncode, stdo, stde, cmd)
+        elif self.test.protocol is TestProtocol.GTEST:
+            self.runobj.complete_gtest(p.returncode, stdo, stde, cmd)
 
 
 class TestHarness:
