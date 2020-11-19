@@ -1520,6 +1520,13 @@ class OrderedSet(T.MutableSet[_T]):
         if value in self.__container:
             del self.__container[value]
 
+    def move_to_end(self, value: _T, last: bool = True) -> None:
+        self.__container.move_to_end(value, last)
+
+    def popitem(self, last: bool = True) -> _T:
+        item, _ = self.__container.popitem(last)
+        return item
+
     def update(self, iterable: T.Iterable[_T]) -> None:
         for item in iterable:
             self.__container[item] = None
