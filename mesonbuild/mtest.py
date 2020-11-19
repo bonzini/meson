@@ -1057,6 +1057,11 @@ class TestHarness:
         else:
             sys.exit('Unknown test result encountered: {}'.format(result.res))
 
+        if result.res.is_bad():
+            self.collected_failures.append(result)
+        for l in self.loggers:
+            l.log(self, result)
+
     def format(self, result: TestRun, colorize: bool) -> str:
         result_str = '{num:{numlen}}/{testcount} {name:{name_max_len}} {res} {dur:.2f}s'.format(
             numlen=len(str(self.test_count)),
@@ -1069,12 +1074,6 @@ class TestHarness:
         if result.res is TestResult.FAIL:
             result_str += ' ' + returncode_to_status(result.returncode)
         return result_str
-
-    def print_stats(self, result: TestRun) -> None:
-        if result.res.is_bad():
-            self.collected_failures.append(result)
-        for l in self.loggers:
-            l.log(self, result)
 
     def summary(self) -> str:
         return textwrap.dedent('''
@@ -1259,7 +1258,6 @@ class TestHarness:
                     return
                 res = await test.run()
                 self.process_test_result(res)
-                self.print_stats(res)
 
         def test_done(f: asyncio.Future) -> None:
             if not f.cancelled():
