@@ -872,11 +872,13 @@ class TestHarness:
             self.tests = load_benchmarks(options.wd)
         else:
             self.tests = load_tests(options.wd)
+        self.test_count = len(self.tests)
         ss = set()
         for t in self.tests:
             for s in t.suite:
                 ss.add(s)
         self.suites = list(ss)
+        self.name_max_len = max([len(self.get_pretty_suite(test)) for test in self.tests])
 
     def __del__(self) -> None:
         self.close_logfiles()
@@ -949,16 +951,15 @@ class TestHarness:
         else:
             sys.exit('Unknown test result encountered: {}'.format(result.res))
 
-    def print_stats(self, test_count: int, name_max_len: int,
-                    result: TestRun) -> None:
+    def print_stats(self, result: TestRun) -> None:
         ok_statuses = (TestResult.OK, TestResult.EXPECTEDFAIL)
         bad_statuses = (TestResult.FAIL, TestResult.TIMEOUT, TestResult.INTERRUPT,
                         TestResult.UNEXPECTEDPASS, TestResult.ERROR)
         result_str = '{num:{numlen}}/{testcount} {name:{name_max_len}} {res:{reslen}} {dur:.2f}s'.format(
-            numlen=len(str(test_count)),
+            numlen=len(str(self.test_count)),
             num=result.num,
-            testcount=test_count,
-            name_max_len=name_max_len,
+            testcount=self.test_count,
+            name_max_len=self.name_max_len,
             name=result.name,
             reslen=TestResult.maxlen(),
             res=result.res.value,
@@ -1186,8 +1187,6 @@ class TestHarness:
         semaphore = asyncio.Semaphore(self.options.num_processes)
         futures = deque()  # type: T.Deque[asyncio.Future]
         running_tests = dict() # type: T.Dict[asyncio.Future, str]
-        test_count = len(tests)
-        name_max_len = max([len(self.get_pretty_suite(test)) for test in tests])
         self.open_log_files()
         startdir = os.getcwd()
         if self.options.wd:
@@ -1201,7 +1200,7 @@ class TestHarness:
                     return
                 res = await test.run()
                 self.process_test_result(res)
-                self.print_stats(test_count, name_max_len, res)
+                self.print_stats(res)
 
         def test_done(f: asyncio.Future) -> None:
             if not f.cancelled():
