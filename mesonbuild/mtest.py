@@ -861,7 +861,7 @@ class TestHarness:
     def __init__(self, options: argparse.Namespace):
         self.options = options
         self.collected_logs = []  # type: T.List[str]
-        self.collected_failures = []  # type: T.List[str]
+        self.collected_failures = []  # type: T.List[TestRun]
         self.fail_count = 0
         self.expectedfail_count = 0
         self.unexpectedpass_count = 0
@@ -870,7 +870,6 @@ class TestHarness:
         self.timeout_count = 0
         self.is_run = False
         self.tests = None
-        self.results = []         # type: T.List[TestRun]
         self.logfilename = None   # type: T.Optional[str]
         self.logfile = None       # type: T.Optional[T.TextIO]
         self.jsonlogfile = None   # type: T.Optional[T.TextIO]
@@ -958,7 +957,7 @@ class TestHarness:
         else:
             sys.exit('Unknown test result encountered: {}'.format(result.res))
 
-    def print_stats(self, result: TestRun) -> None:
+    def format(self, result: TestRun, colorize: bool) -> str:
         result_str = '{num:{numlen}}/{testcount} {name:{name_max_len}} {res:{reslen}} {dur:.2f}s'.format(
             numlen=len(str(self.test_count)),
             num=result.num,
@@ -970,15 +969,19 @@ class TestHarness:
             dur=result.duration)
         if result.res is TestResult.FAIL:
             result_str += ' ' + returncode_to_status(result.returncode)
+        decorator = mlog.plain
         if result.res.is_bad():
-            self.collected_failures.append(result_str)
+            decorator = mlog.red
+        elif result.res is TestResult.SKIP:
+            decorator = mlog.yellow
+        return decorator(result_str).get_text(colorize)
+
+    def print_stats(self, result: TestRun) -> None:
+        if result.res.is_bad():
+            self.collected_failures.append(result)
         if not self.options.quiet or not result.res.is_ok():
-            decorator = mlog.plain
-            if result.res.is_bad():
-                decorator = mlog.red
-            elif result.res is TestResult.SKIP:
-                decorator = mlog.yellow
-            print(decorator(result_str).get_text(mlog.colorize_console()))
+            print(self.format(result, mlog.colorize_console()))
+        result_str = self.format(result, False)
         result_str += "\n\n" + result.get_log()
         if result.res.is_bad():
             if self.options.print_errorlogs:
@@ -992,9 +995,16 @@ class TestHarness:
 
     def print_summary(self) -> None:
         # Prepend a list of failures
-        msg = '' if len(self.collected_failures) < 1 else "\nSummary of Failures:\n\n"
-        msg += '\n'.join(self.collected_failures)
-        msg += textwrap.dedent('''
+        if self.collected_failures:
+            print("\nSummary of Failures:\n")
+            if self.logfile:
+                self.logfile.write("\nSummary of Failures:\n\n")
+            for i, result in enumerate(self.collected_failures, 1):
+                print(self.format(result, False))
+                if self.logfile:
+                    self.logfile.write(self.format(result, False) + '\n')
+
+        msg = textwrap.dedent('''
 
             Ok:                 {:<4}
             Expected Fail:      {:<4}
@@ -1007,6 +1017,7 @@ class TestHarness:
         print(msg)
         if self.logfile:
             self.logfile.write(msg)
+
         if self.junit:
             self.junit.write()
 
