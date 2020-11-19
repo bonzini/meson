@@ -33,7 +33,6 @@ import re
 import signal
 import subprocess
 import sys
-import tempfile
 import textwrap
 import time
 import typing as T
@@ -1025,11 +1024,12 @@ class SingleTestRunner:
 
         stdout = None
         stderr = None
-        if not self.options.verbose:
-            stdout = tempfile.TemporaryFile("wb+")
-            stderr = tempfile.TemporaryFile("wb+") if self.options.split else stdout
-        if self.test.protocol is TestProtocol.TAP and stderr is stdout:
-            stdout = tempfile.TemporaryFile("wb+")
+        if self.test.protocol is TestProtocol.TAP:
+            stdout = asyncio.subprocess.PIPE
+            stderr = None if self.options.verbose else asyncio.subprocess.PIPE
+        elif not self.options.verbose:
+            stdout = asyncio.subprocess.PIPE
+            stderr = asyncio.subprocess.PIPE if self.options.split else asyncio.subprocess.STDOUT
 
         extra_cmd = []  # type: T.List[str]
         if self.test.protocol is TestProtocol.GTEST:
@@ -1045,6 +1045,7 @@ class SingleTestRunner:
         else:
             timeout = self.test.timeout
 
+        stdo_task = stde_task = None
         async with self._run_subprocess(cmd + extra_cmd,
                                         timeout=timeout,
                                         stdout=stdout,
@@ -1052,22 +1053,19 @@ class SingleTestRunner:
                                         env=self.env,
                                         cwd=self.test.workdir) as p_:
             # Store the subprocess object to get the results later,
-            # and let __aexit__ wait for the subprocess to finish.
+            # start background tasks to read from pipes, and let
+            # __aexit__ wait for the subprocess to finish.
             p = p_
+            if stdout is not None:
+                stdo_task = p.stdout.read(-1)
+            if stderr is not None and stderr != asyncio.subprocess.STDOUT:
+                stde_task = p.stderr.read(-1)
 
-        if p.additional_error is None:
-            if stdout is None:
-                stdo = ''
-            else:
-                stdout.seek(0)
-                stdo = decode(stdout.read())
-            if stderr is None or stderr is stdout:
-                stde = ''
-            else:
-                stderr.seek(0)
-                stde = decode(stderr.read())
-        else:
-            stdo = ""
+        stdo = decode(await stdo_task) if stdo_task is not None else ''
+        stde = decode(await stde_task) if stde_task is not None else ''
+
+        if p.additional_error is not None:
+            stdo = ''
             stde = p.additional_error
         if p.result:
             self.runobj.complete(p.result, [], p.returncode, stdo, stde, cmd)
