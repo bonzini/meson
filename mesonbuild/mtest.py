@@ -19,6 +19,7 @@ from collections import deque, namedtuple
 from copy import deepcopy
 import argparse
 import asyncio
+import contextlib
 import datetime
 import enum
 import io
@@ -860,6 +861,16 @@ async def complete_all(futures: T.Iterable[asyncio.Future]) -> None:
             if not f.cancelled():
                 f.result()
 
+class TestSubprocess(object):
+    stdout: T.Optional[asyncio.StreamReader] = None
+    stderr: T.Optional[asyncio.StreamReader] = None
+    returncode: T.Optional[int] = None
+    result: T.Optional[TestResult] = None
+    additional_error: T.Optional[str] = None
+
+    def __init__(self, p: asyncio.subprocess.Process):
+        self.stdout = p.stdout
+        self.stderr = p.stderr
 
 class SingleTestRunner:
 
@@ -905,9 +916,10 @@ class SingleTestRunner:
             await self._run_cmd(wrap + cmd + self.test.cmd_args + self.options.test_args)
         return self.runobj
 
+    @contextlib.asynccontextmanager
     async def _run_subprocess(self, args: T.List[str], *, timeout: T.Optional[int],
                               stdout: T.IO, stderr: T.IO,
-                              env: T.Dict[str, str], cwd: T.Optional[str]) -> T.Tuple[int, TestResult, T.Optional[str]]:
+                              env: T.Dict[str, str], cwd: T.Optional[str]) -> T.AsyncIterator[TestSubprocess]:
         async def kill_process(p: asyncio.subprocess.Process) -> T.Optional[str]:
             # Python does not provide multiplatform support for
             # killing a process and all its children so we need
@@ -970,25 +982,25 @@ class SingleTestRunner:
                                                  env=env,
                                                  cwd=cwd,
                                                  preexec_fn=preexec_fn if not is_windows() else None)
-        result = None
-        additional_error = None
+        subp = TestSubprocess(p)
+        yield subp
         try:
             await try_wait_one(p.wait(), timeout=timeout)
             if p.returncode is None:
                 if self.options.verbose:
                     print('{} time out (After {} seconds)'.format(self.test.name, timeout))
-                additional_error = await kill_process(p)
-                result = TestResult.TIMEOUT
+                subp.additional_error = await kill_process(p)
+                subp.result = TestResult.TIMEOUT
         except asyncio.CancelledError:
             # The main loop must have seen Ctrl-C.
-            additional_error = await kill_process(p)
-            result = TestResult.INTERRUPT
+            subp.additional_error = await kill_process(p)
+            subp.result = TestResult.INTERRUPT
         finally:
             if self.options.gdb:
                 # Let us accept ^C again
                 signal.signal(signal.SIGINT, previous_sigint_handler)
 
-        return p.returncode or 0, result, additional_error
+        subp.returncode = p.returncode or 0
 
     async def _run_cmd(self, cmd: T.List[str]) -> None:
         if self.test.extra_paths:
@@ -1033,13 +1045,17 @@ class SingleTestRunner:
         else:
             timeout = self.test.timeout
 
-        returncode, result, additional_error = await self._run_subprocess(cmd + extra_cmd,
-                                                                          timeout=timeout,
-                                                                          stdout=stdout,
-                                                                          stderr=stderr,
-                                                                          env=self.env,
-                                                                          cwd=self.test.workdir)
-        if additional_error is None:
+        async with self._run_subprocess(cmd + extra_cmd,
+                                        timeout=timeout,
+                                        stdout=stdout,
+                                        stderr=stderr,
+                                        env=self.env,
+                                        cwd=self.test.workdir) as p_:
+            # Store the subprocess object to get the results later,
+            # and let __aexit__ wait for the subprocess to finish.
+            p = p_
+
+        if p.additional_error is None:
             if stdout is None:
                 stdo = ''
             else:
@@ -1052,18 +1068,19 @@ class SingleTestRunner:
                 stde = decode(stderr.read())
         else:
             stdo = ""
-            stde = additional_error
-        if result:
-            self.runobj.complete(result, [], returncode, stdo, stde, cmd)
+            stde = p.additional_error
+        if p.result:
+            self.runobj.complete(p.result, [], p.returncode, stdo, stde, cmd)
         else:
             if self.test.protocol is TestProtocol.EXITCODE:
-                self.runobj.complete_exitcode(returncode, stdo, stde, cmd)
+                self.runobj.complete_exitcode(p.returncode, stdo, stde, cmd)
             elif self.test.protocol is TestProtocol.GTEST:
-                self.runobj.complete_gtest(returncode, stdo, stde, cmd)
+                self.runobj.complete_gtest(p.returncode, stdo, stde, cmd)
             else:
                 if self.options.verbose:
                     print(stdo, end='')
-                self.runobj.complete_tap(returncode, stdo, stde, cmd)
+                self.runobj.complete_tap(p.returncode, stdo, stde, cmd)
+
 
 class TestHarness:
     def __init__(self, options: argparse.Namespace):
