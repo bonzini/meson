@@ -14,6 +14,7 @@
 
 from collections import OrderedDict
 from functools import lru_cache
+import abc
 import copy
 import hashlib
 import itertools, pathlib
@@ -540,7 +541,6 @@ class Target(HoldableObject):
         self.subproject = subproject
         self.build_by_default = build_by_default
         self.for_machine = for_machine
-        self.install = False
         self.build_always_stale = False
         self.option_overrides_base: T.Dict[OptionKey, str] = {}
         self.option_overrides_compiler: T.Dict[OptionKey, str] = {}
@@ -636,24 +636,6 @@ class Target(HoldableObject):
         return self.construct_id_from_path(
             self.subdir, self.name, self.type_suffix())
 
-    def process_kwargs_base(self, kwargs: T.Dict[str, T.Any]) -> None:
-        if 'build_by_default' in kwargs:
-            self.build_by_default = kwargs['build_by_default']
-            if not isinstance(self.build_by_default, bool):
-                raise InvalidArguments('build_by_default must be a boolean value.')
-        elif kwargs.get('install', False):
-            # For backward compatibility, if build_by_default is not explicitly
-            # set, use the value of 'install' if it's enabled.
-            self.build_by_default = True
-
-        option_overrides = self.parse_overrides(kwargs)
-
-        for k, v in option_overrides.items():
-            if k.lang:
-                self.option_overrides_compiler[k.evolve(machine=self.for_machine)] = v
-                continue
-            self.option_overrides_base[k] = v
-
     @staticmethod
     def parse_overrides(kwargs: T.Dict[str, T.Any]) -> T.Dict[OptionKey, str]:
         opts = kwargs.get('override_options', [])
@@ -683,7 +665,48 @@ class Target(HoldableObject):
     def should_install(self) -> bool:
         return False
 
-class BuildTarget(Target):
+class FileTarget(Target, metaclass=abc.ABCMeta):
+    need_install: bool
+    install_mode: T.Optional['FileMode']
+    install_tag: T.List[T.Optional[str]]
+    sources: T.List[T.Union[str, 'SourceOutputs']]
+
+    def get_custom_install_mode(self) -> T.Optional['FileMode']:
+        return self.install_mode
+
+    @abc.abstractmethod
+    def get_generated_sources(self) -> T.List['GeneratedTypes']:
+        pass
+
+    @abc.abstractmethod
+    def get_filename(self) -> str:
+        pass
+
+    def get_sources(self) -> T.List[T.Union[str, 'SourceOutputs']]:
+        return self.sources
+
+    def process_kwargs_base(self, kwargs: T.Dict[str, T.Any]) -> None:
+        if 'build_by_default' in kwargs:
+            self.build_by_default = kwargs['build_by_default']
+            if not isinstance(self.build_by_default, bool):
+                raise InvalidArguments('build_by_default must be a boolean value.')
+        elif kwargs.get('install', False):
+            # For backward compatibility, if build_by_default is not explicitly
+            # set, use the value of 'install' if it's enabled.
+            self.build_by_default = True
+
+        option_overrides = self.parse_overrides(kwargs)
+
+        for k, v in option_overrides.items():
+            if k.lang:
+                self.option_overrides_compiler[k.evolve(machine=self.for_machine)] = v
+                continue
+            self.option_overrides_base[k] = v
+
+    def should_install(self) -> bool:
+        return self.need_install
+
+class BuildTarget(FileTarget):
     known_kwargs = known_build_target_kwargs
 
     install_dir: T.List[T.Union[str, bool]]
@@ -1055,9 +1078,6 @@ class BuildTarget(Target):
     def get_custom_install_dir(self) -> T.List[T.Union[str, bool]]:
         return self.install_dir
 
-    def get_custom_install_mode(self) -> T.Optional['FileMode']:
-        return self.install_mode
-
     def process_kwargs(self, kwargs, environment):
         self.process_kwargs_base(kwargs)
         self.copy_kwargs(kwargs)
@@ -1279,17 +1299,11 @@ class BuildTarget(Target):
     def get_source_subdir(self):
         return self.subdir
 
-    def get_sources(self):
-        return self.sources
-
     def get_objects(self) -> T.List[T.Union[str, 'File', 'ExtractedObjects']]:
         return self.objects
 
     def get_generated_sources(self) -> T.List['GeneratedTypes']:
         return self.generated
-
-    def should_install(self) -> bool:
-        return self.need_install
 
     def has_pch(self) -> bool:
         return bool(self.pch)
@@ -2338,7 +2352,7 @@ class CommandBase:
                 raise InvalidArguments(f'Argument {c!r} in "command" is invalid')
         return final_cmd
 
-class CustomTarget(Target, CommandBase):
+class CustomTarget(FileTarget, CommandBase):
     known_kwargs = {
         'input',
         'output',
@@ -2474,10 +2488,10 @@ class CustomTarget(Target, CommandBase):
             if self.feed and isinstance(c, str) and '@INPUT@' in c:
                 raise InvalidArguments('@INPUT@ is not allowed when feeding input.')
         if 'install' in kwargs:
-            self.install = kwargs['install']
-            if not isinstance(self.install, bool):
+            if not isinstance(kwargs['install'], bool):
                 raise InvalidArguments('"install" must be boolean.')
-            if self.install:
+            self.need_install = kwargs['install']
+            if self.need_install:
                 if not kwargs.get('install_dir', False):
                     raise InvalidArguments('"install_dir" must be specified '
                                            'when installing a target')
@@ -2501,7 +2515,7 @@ class CustomTarget(Target, CommandBase):
             else:
                 self.install_tag = install_tag
         else:
-            self.install = False
+            self.need_install = False
             self.install_dir = []
             self.install_mode = None
             self.install_tag = []
@@ -2532,23 +2546,14 @@ class CustomTarget(Target, CommandBase):
     def get_dependencies(self):
         return self.dependencies
 
-    def should_install(self) -> bool:
-        return self.install
-
     def get_custom_install_dir(self) -> T.List[T.Union[str, bool]]:
         return self.install_dir
-
-    def get_custom_install_mode(self) -> T.Optional['FileMode']:
-        return self.install_mode
 
     def get_outputs(self) -> T.List[str]:
         return self.outputs
 
     def get_filename(self) -> str:
         return self.outputs[0]
-
-    def get_sources(self) -> T.List[T.Union[str, File, 'CustomTarget', 'CustomTargetIndex', 'GeneratedList', 'ExtractedObjects']]:
-        return self.sources
 
     def get_generated_lists(self) -> T.List[GeneratedList]:
         genlists: T.List[GeneratedList] = []
