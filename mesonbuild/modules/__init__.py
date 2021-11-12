@@ -14,7 +14,6 @@
 
 # This file contains the base representation for import('modname')
 
-import os
 import typing as T
 
 from .. import build, mesonlib

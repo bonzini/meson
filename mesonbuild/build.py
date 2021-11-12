@@ -418,7 +418,7 @@ class ExtractedObjects(HoldableObject):
         self.srclist: T.List[File] = srclist if srclist is not None else []
         self.genlist: T.List['GeneratedTypes'] = genlist if genlist is not None else []
         self.objlist: T.Optional[T.List[T.Union[str, 'File', 'ExtractedObjects']]] = \
-             objlist if objlist is not None else []
+            objlist if objlist is not None else []
         if self.target.is_unity:
             self.check_unity_compatible()
 
@@ -1357,8 +1357,8 @@ You probably should put it in link_with instead.''')
                 if isinstance(t, (CustomTarget, CustomTargetIndex)):
                     if not t.should_install():
                         mlog.warning(f'Try to link an installed static library target {self.name} with a'
-                                      'custom target that is not installed, this might cause problems'
-                                      'when you try to use this static library')
+                                     'custom target that is not installed, this might cause problems'
+                                     'when you try to use this static library')
                 elif t.is_internal():
                     # When we're a static library and we link_with to an
                     # internal/convenience library, promote to link_whole.
