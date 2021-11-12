@@ -540,26 +540,22 @@ class Backend:
 
         # XXX: cmd_args either need to be lowered to strings, or need to be checked for non-string arguments, right?
         exe, *raw_cmd_args = cmd
+        # A source file or an output of a custom target can either be directly
+        # runnable or not, that is, a script, a native binary or a cross compiled
+        # binary when exe wrapper is available and when it is not.  This
+        # default is not exhaustive but it works in the common cases.
+        exe_for_machine = MachineChoice.BUILD
         if isinstance(exe, programs.ExternalProgram):
             exe_cmd = exe.get_command()
             exe_for_machine = exe.for_machine
-        elif isinstance(exe, build.BuildTarget):
+        elif isinstance(exe, (build.BuildTarget, build.CustomTarget)):
             exe_cmd = [self.get_target_filename_abs(exe)]
-            exe_for_machine = exe.for_machine
-        elif isinstance(exe, build.CustomTarget):
-            # The output of a custom target can either be directly runnable
-            # or not, that is, a script, a native binary or a cross compiled
-            # binary when exe wrapper is available and when it is not.
-            # This implementation is not exhaustive but it works in the
-            # common cases.
-            exe_cmd = [self.get_target_filename_abs(exe)]
-            exe_for_machine = MachineChoice.BUILD
+            if isinstance(exe, build.BuildTarget):
+                exe_for_machine = exe.for_machine
         elif isinstance(exe, mesonlib.File):
             exe_cmd = [exe.rel_to_builddir(self.environment.source_dir)]
-            exe_for_machine = MachineChoice.BUILD
         else:
             exe_cmd = [exe]
-            exe_for_machine = MachineChoice.BUILD
 
         cmd_args: T.List[str] = []
         for c in raw_cmd_args:
@@ -1318,10 +1314,11 @@ class Backend:
         for i in target.get_sources():
             if isinstance(i, str):
                 fname = [os.path.join(self.build_to_src, target.subdir, i)]
-            elif isinstance(i, build.BuildTarget):
-                fname = [self.get_target_filename(i)]
-            elif isinstance(i, (build.CustomTarget, build.CustomTargetIndex)):
-                fname = [os.path.join(self.get_custom_target_output_dir(i), p) for p in i.get_outputs()]
+            elif isinstance(i, (build.BuildTarget, build.CustomTarget, build.CustomTargetIndex)):
+                if isinstance(i, (build.CustomTarget, build.CustomTargetIndex)):
+                    fname = [os.path.join(self.get_custom_target_output_dir(i), p) for p in i.get_outputs()]
+                else:
+                    fname = [self.get_target_filename(i)]
             elif isinstance(i, build.GeneratedList):
                 fname = [os.path.join(self.get_target_private_dir(target), p) for p in i.get_outputs()]
             elif isinstance(i, build.ExtractedObjects):
