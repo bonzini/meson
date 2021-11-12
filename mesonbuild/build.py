@@ -2648,15 +2648,6 @@ class RunTarget(Target, CommandBase):
     def get_dependencies(self) -> T.List[FileTarget]:
         return self.dependencies
 
-    def get_generated_sources(self) -> T.List['GeneratedTypes']:
-        return []
-
-    def get_sources(self) -> T.List[File]:
-        return []
-
-    def should_install(self) -> bool:
-        return False
-
     def get_filename(self) -> str:
         return self.name
 
