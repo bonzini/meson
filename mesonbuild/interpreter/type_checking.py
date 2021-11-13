@@ -6,7 +6,7 @@
 import typing as T
 
 from .. import compilers
-from ..build import EnvironmentVariables, CustomTarget, BuildTarget, CustomTargetIndex, ExtractedObjects, GeneratedList, IncludeDirs
+from ..build import EnvironmentVariables, FileTarget, CustomTargetIndex, ExtractedObjects, GeneratedList, IncludeDirs
 from ..coredata import UserFeatureOption
 from ..interpreterbase import TYPE_var
 from ..interpreterbase.decorators import KwargInfo, ContainerTypeInfo
@@ -194,9 +194,9 @@ DEPFILE_KW: KwargInfo[T.Optional[str]] = KwargInfo(
 )
 
 # TODO: CustomTargetIndex should be supported here as well
-DEPENDS_KW: KwargInfo[T.List[T.Union[BuildTarget, CustomTarget]]] = KwargInfo(
+DEPENDS_KW: KwargInfo[T.List[FileTarget]] = KwargInfo(
     'depends',
-    ContainerTypeInfo(list, (BuildTarget, CustomTarget)),
+    ContainerTypeInfo(list, FileTarget),
     listify=True,
     default=[],
 )
@@ -208,10 +208,10 @@ DEPEND_FILES_KW: KwargInfo[T.List[T.Union[str, File]]] = KwargInfo(
     default=[],
 )
 
-COMMAND_KW: KwargInfo[T.List[T.Union[str, BuildTarget, CustomTarget, CustomTargetIndex, ExternalProgram, File]]] = KwargInfo(
+COMMAND_KW: KwargInfo[T.List[T.Union[str, FileTarget, CustomTargetIndex, ExternalProgram, File]]] = KwargInfo(
     'command',
     # TODO: should accept CustomTargetIndex as well?
-    ContainerTypeInfo(list, (str, BuildTarget, CustomTarget, CustomTargetIndex, ExternalProgram, File), allow_empty=False),
+    ContainerTypeInfo(list, (str, FileTarget, CustomTargetIndex, ExternalProgram, File), allow_empty=False),
     required=True,
     listify=True,
     default=[],
@@ -256,9 +256,9 @@ CT_OUTPUT_KW: KwargInfo[T.List[str]] = KwargInfo(
     validator=_output_validator,
 )
 
-CT_INPUT_KW: KwargInfo[T.List[T.Union[str, File, ExternalProgram, BuildTarget, CustomTarget, CustomTargetIndex, ExtractedObjects, GeneratedList]]] = KwargInfo(
+CT_INPUT_KW: KwargInfo[T.List[T.Union[str, File, ExternalProgram, FileTarget, CustomTargetIndex, ExtractedObjects, GeneratedList]]] = KwargInfo(
     'input',
-    ContainerTypeInfo(list, (str, File, ExternalProgram, BuildTarget, CustomTarget, CustomTargetIndex, ExtractedObjects, GeneratedList)),
+    ContainerTypeInfo(list, (str, File, ExternalProgram, FileTarget, CustomTargetIndex, ExtractedObjects, GeneratedList)),
     listify=True,
     default=[],
 )

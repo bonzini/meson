@@ -110,7 +110,7 @@ class HotdocTargetBuilder:
                 self.check_extra_arg_type(arg, v)
             return
 
-        valid_types = (str, bool, mesonlib.File, build.IncludeDirs, build.CustomTarget, build.CustomTargetIndex, build.BuildTarget)
+        valid_types = (str, bool, mesonlib.File, build.IncludeDirs, build.FileTarget, build.CustomTargetIndex)
         if not isinstance(value, valid_types):
             raise InvalidArguments('Argument "{}={}" should be of type: {}.'.format(
                 arg, value, [t.__name__ for t in valid_types]))
@@ -207,7 +207,7 @@ class HotdocTargetBuilder:
                 self.add_include_path(os.path.join(self.builddir, dep.hotdoc_conf.subdir))
                 self.cmd += ['--extra-assets=' + p for p in dep.extra_assets]
                 self.add_extension_paths(dep.extra_extension_paths)
-            elif isinstance(dep, build.CustomTarget) or isinstance(dep, build.BuildTarget):
+            elif isinstance(dep, build.FileTarget):
                 self._dependencies.append(dep)
             elif isinstance(dep, build.CustomTargetIndex):
                 self._dependencies.append(dep.target)
@@ -240,7 +240,7 @@ class HotdocTargetBuilder:
                     cmd.append(os.path.join(self.builddir, arg.get_curdir(), inc_dir))
 
                 continue
-            elif isinstance(arg, (build.BuildTarget, build.CustomTarget)):
+            elif isinstance(arg, build.FileTarget):
                 self._dependencies.append(arg)
                 arg = self.interpreter.backend.get_target_filename_abs(arg)
             elif isinstance(arg, build.CustomTargetIndex):

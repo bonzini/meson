@@ -96,7 +96,7 @@ if T.TYPE_CHECKING:
                            build.ExtractedObjects, str]
     # Input source types passed to the build.Target classes
     SourceOutputs = T.Union[mesonlib.File, build.GeneratedList,
-                            build.BuildTarget, build.CustomTargetIndex, build.CustomTarget,
+                            build.FileTarget, build.CustomTargetIndex,
                             build.ExtractedObjects, build.GeneratedList]
 
 
@@ -199,7 +199,7 @@ known_build_target_kwargs = (
 )
 
 TEST_KWARGS: T.List[KwargInfo] = [
-    KwargInfo('args', ContainerTypeInfo(list, (str, mesonlib.File, build.BuildTarget, build.CustomTarget, build.CustomTargetIndex)),
+    KwargInfo('args', ContainerTypeInfo(list, (str, mesonlib.File, build.FileTarget, build.CustomTargetIndex)),
               listify=True, default=[]),
     KwargInfo('should_fail', bool, default=False),
     KwargInfo('timeout', int, default=30),
@@ -468,7 +468,7 @@ class Interpreter(InterpreterBase, HoldableObject):
         for v in invalues:
             if isinstance(v, ObjectHolder):
                 raise InterpreterException('Modules must not return ObjectHolders')
-            if isinstance(v, (build.BuildTarget, build.CustomTarget, build.RunTarget)):
+            if isinstance(v, (build.FileTarget, build.RunTarget)):
                 self.add_target(v.name, v)
             elif isinstance(v, list):
                 self.process_new_values(v)

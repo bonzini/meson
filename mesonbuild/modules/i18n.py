@@ -37,7 +37,7 @@ if T.TYPE_CHECKING:
     class MergeFile(TypedDict):
 
         input: T.List[T.Union[
-            str, build.BuildTarget, build.CustomTarget, build.CustomTargetIndex,
+            str, build.FileTarget, build.CustomTargetIndex,
             build.ExtractedObjects, build.GeneratedList, ExternalProgram,
             mesonlib.File]]
         output: T.List[str]
@@ -151,7 +151,7 @@ class I18nModule(ExtensionModule):
         ddirs = self._get_data_dirs(state, kwargs['data_dirs'])
         datadirs = '--datadirs=' + ':'.join(ddirs) if ddirs else None
 
-        command: T.List[T.Union[str, build.BuildTarget, build.CustomTarget,
+        command: T.List[T.Union[str, build.FileTarget,
                                 build.CustomTargetIndex, 'ExternalProgram', mesonlib.File]] = []
         command.extend(state.environment.get_build_command())
         command.extend([

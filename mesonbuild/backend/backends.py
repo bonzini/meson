@@ -528,7 +528,7 @@ class Backend:
         return result
 
     def get_executable_serialisation(
-            self, cmd: T.Sequence[T.Union[programs.ExternalProgram, build.BuildTarget, build.CustomTarget, File, str]],
+            self, cmd: T.Sequence[T.Union[programs.ExternalProgram, build.FileTarget, File, str]],
             workdir: T.Optional[str] = None,
             extra_bdeps: T.Optional[T.List[build.BuildTarget]] = None,
             capture: T.Optional[bool] = None,
@@ -547,7 +547,7 @@ class Backend:
         if isinstance(exe, programs.ExternalProgram):
             exe_cmd = exe.get_command()
             exe_for_machine = exe.for_machine
-        elif isinstance(exe, (build.BuildTarget, build.CustomTarget)):
+        elif isinstance(exe, build.FileTarget):
             exe_cmd = [self.get_target_filename_abs(exe)]
             if isinstance(exe, build.BuildTarget):
                 exe_for_machine = exe.for_machine
@@ -562,7 +562,7 @@ class Backend:
                 p = c.get_path()
                 assert isinstance(p, str)
                 cmd_args.append(p)
-            elif isinstance(c, (build.BuildTarget, build.CustomTarget)):
+            elif isinstance(c, build.FileTarget):
                 cmd_args.append(self.get_target_filename_abs(c))
             elif isinstance(c, mesonlib.File):
                 cmd_args.append(c.rel_to_builddir(self.environment.source_dir))
@@ -594,8 +594,8 @@ class Backend:
                                        exe_wrapper, workdir,
                                        extra_paths, capture, feed, tag, verbose)
 
-    def as_meson_exe_cmdline(self, exe: T.Union[str, mesonlib.File, build.BuildTarget, build.CustomTarget, programs.ExternalProgram],
-                             cmd_args: T.Sequence[T.Union[str, mesonlib.File, build.BuildTarget, build.CustomTarget, programs.ExternalProgram]],
+    def as_meson_exe_cmdline(self, exe: T.Union[str, mesonlib.File, build.FileTarget, programs.ExternalProgram],
+                             cmd_args: T.Sequence[T.Union[str, mesonlib.File, build.FileTarget, programs.ExternalProgram]],
                              workdir: T.Optional[str] = None,
                              extra_bdeps: T.Optional[T.List[build.BuildTarget]] = None,
                              capture: T.Optional[bool] = None,
@@ -606,7 +606,7 @@ class Backend:
         '''
         Serialize an executable for running with a generator or a custom target
         '''
-        cmd: T.List[T.Union[str, mesonlib.File, build.BuildTarget, build.CustomTarget, programs.ExternalProgram]] = []
+        cmd: T.List[T.Union[str, mesonlib.File, build.FileTarget, programs.ExternalProgram]] = []
         cmd.append(exe)
         cmd.extend(cmd_args)
         es = self.get_executable_serialisation(cmd, workdir, extra_bdeps, capture, feed, env, verbose=verbose)
@@ -648,7 +648,7 @@ class Backend:
             )
 
         if isinstance(exe, (programs.ExternalProgram,
-                            build.BuildTarget, build.CustomTarget)):
+                            build.FileTarget)):
             basename = exe.name
         elif isinstance(exe, mesonlib.File):
             basename = os.path.basename(exe.fname)
@@ -1054,8 +1054,8 @@ class Backend:
         return list(paths)
 
     def determine_windows_extra_paths(
-            self, target: T.Union[build.BuildTarget, build.CustomTarget, programs.ExternalProgram, mesonlib.File, str],
-            extra_bdeps: T.Sequence[T.Union[build.BuildTarget, build.CustomTarget]]) -> T.List[str]:
+            self, target: T.Union[build.FileTarget, programs.ExternalProgram, mesonlib.File, str],
+            extra_bdeps: T.Sequence[build.FileTarget]) -> T.List[str]:
         """On Windows there is no such thing as an rpath.
 
         We must determine all locations of DLLs that this exe
@@ -1118,7 +1118,7 @@ class Backend:
                 exe_wrapper = None
             machine = self.environment.machines[exe.for_machine]
             if machine.is_windows() or machine.is_cygwin():
-                extra_bdeps: T.List[T.Union[build.BuildTarget, build.CustomTarget]] = []
+                extra_bdeps: T.List[build.FileTarget] = []
                 if isinstance(exe, build.CustomTarget):
                     extra_bdeps = list(exe.get_transitive_build_target_deps())
                 extra_paths = self.determine_windows_extra_paths(exe, extra_bdeps)
@@ -1260,8 +1260,8 @@ class Backend:
             newargs.append(arg)
         return newargs
 
-    def get_build_by_default_targets(self) -> 'T.OrderedDict[str, T.Union[build.BuildTarget, build.CustomTarget]]':
-        result: 'T.OrderedDict[str, T.Union[build.BuildTarget, build.CustomTarget]]' = OrderedDict()
+    def get_build_by_default_targets(self) -> T.OrderedDict[str, build.FileTarget]:
+        result: T.OrderedDict[str, build.FileTarget] = OrderedDict()
         # Get all build and custom targets that must be built by default
         for name, b in self.build.get_targets().items():
             if b.build_by_default:
@@ -1271,14 +1271,14 @@ class Backend:
         # built only before running tests.
         for t in self.build.get_tests():
             exe = t.exe
-            if isinstance(exe, (build.CustomTarget, build.BuildTarget)):
+            if isinstance(exe, build.FileTarget):
                 result[exe.get_id()] = exe
             for arg in t.cmd_args:
-                if not isinstance(arg, (build.CustomTarget, build.BuildTarget)):
+                if not isinstance(arg, build.FileTarget):
                     continue
                 result[arg.get_id()] = arg
             for dep in t.depends:
-                assert isinstance(dep, (build.CustomTarget, build.BuildTarget))
+                assert isinstance(dep, build.FileTarget)
                 result[dep.get_id()] = dep
         return result
 
@@ -1291,7 +1291,7 @@ class Backend:
         return libs
 
     @lru_cache(maxsize=None)
-    def get_custom_target_provided_libraries(self, target: T.Union[build.BuildTarget, build.CustomTarget]) -> 'ImmutableListProtocol[str]':
+    def get_custom_target_provided_libraries(self, target: build.FileTarget) -> 'ImmutableListProtocol[str]':
         libs: T.List[str] = []
         for t in target.get_generated_sources():
             if not isinstance(t, build.CustomTarget):
@@ -1313,7 +1313,7 @@ class Backend:
         for i in target.get_sources():
             if isinstance(i, str):
                 fname = [os.path.join(self.build_to_src, target.subdir, i)]
-            elif isinstance(i, (build.BuildTarget, build.CustomTarget, build.CustomTargetIndex)):
+            elif isinstance(i, (build.FileTarget, build.CustomTargetIndex)):
                 if isinstance(i, (build.CustomTarget, build.CustomTargetIndex)):
                     fname = [os.path.join(self.get_custom_target_output_dir(i), p) for p in i.get_outputs()]
                 else:
@@ -1779,7 +1779,7 @@ class Backend:
 
         This is a limited fallback / reference implementation. The backend should override this method.
         '''
-        if isinstance(target, (build.CustomTarget, build.BuildTarget)):
+        if isinstance(target, build.FileTarget):
             source_list_raw = target.sources
             source_list = []
             for j in source_list_raw:
@@ -1787,7 +1787,7 @@ class Backend:
                     source_list += [j.absolute_path(self.source_dir, self.build_dir)]
                 elif isinstance(j, str):
                     source_list += [os.path.join(self.source_dir, j)]
-                elif isinstance(j, (build.CustomTarget, build.BuildTarget)):
+                elif isinstance(j, build.FileTarget):
                     source_list += [os.path.join(self.build_dir, j.get_subdir(), o) for o in j.get_outputs()]
             source_list = list(map(lambda x: os.path.normpath(x), source_list))
 
@@ -1799,7 +1799,7 @@ class Backend:
                         compiler += [j.absolute_path(self.source_dir, self.build_dir)]
                     elif isinstance(j, str):
                         compiler += [j]
-                    elif isinstance(j, (build.BuildTarget, build.CustomTarget)):
+                    elif isinstance(j, build.FileTarget):
                         compiler += j.get_outputs()
                     else:
                         raise RuntimeError(f'Type "{type(j).__name__}" is not supported in get_introspection_data. This is a bug')

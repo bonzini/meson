@@ -240,7 +240,7 @@ class Build:
         self.project_version = None
         self.environment = environment
         self.projects = {}
-        self.targets: 'T.OrderedDict[str, T.Union[CustomTarget, BuildTarget]]' = OrderedDict()
+        self.targets: T.OrderedDict[str, 'FileTarget'] = OrderedDict()
         self.run_target_names: T.Set[T.Tuple[str, str]] = set()
         self.global_args: PerMachine[T.Dict[str, T.List[str]]] = PerMachine({}, {})
         self.global_link_args: PerMachine[T.Dict[str, T.List[str]]] = PerMachine({}, {})
@@ -313,7 +313,7 @@ class Build:
     def get_subproject_dir(self):
         return self.subproject_dir
 
-    def get_targets(self) -> 'T.OrderedDict[str, T.Union[CustomTarget, BuildTarget]]':
+    def get_targets(self) -> T.OrderedDict[str, 'FileTarget']:
         return self.targets
 
     def get_tests(self) -> T.List['Test']:
@@ -1636,12 +1636,12 @@ class Generator(HoldableObject):
                  *,
                  depfile: T.Optional[str] = None,
                  capture: bool = False,
-                 depends: T.Optional[T.List[T.Union[BuildTarget, 'CustomTarget']]] = None,
+                 depends: T.Optional[T.List[FileTarget]] = None,
                  name: str = 'Generator'):
         self.exe = exe
         self.depfile = depfile
         self.capture = capture
-        self.depends: T.List[T.Union[BuildTarget, 'CustomTarget']] = depends or []
+        self.depends: T.List[FileTarget] = depends or []
         self.arglist = arguments
         self.outputs = output
         self.name = name
@@ -2317,13 +2317,13 @@ class BothLibraries(SecondLevelHolder):
 class CommandBase:
 
     depend_files: T.List[File]
-    dependencies: T.List[T.Union[BuildTarget, 'CustomTarget']]
+    dependencies: T.List[FileTarget]
     subproject: str
 
-    def flatten_command(self, cmd: T.Sequence[T.Union[str, File, programs.ExternalProgram, 'BuildTarget', 'CustomTarget', 'CustomTargetIndex']]) -> \
-            T.List[T.Union[str, File, BuildTarget, 'CustomTarget']]:
+    def flatten_command(self, cmd: T.Sequence[T.Union[str, File, programs.ExternalProgram, FileTarget, 'CustomTargetIndex']]) -> \
+            T.List[T.Union[str, File, FileTarget]]:
         cmd = listify(cmd)
-        final_cmd: T.List[T.Union[str, File, BuildTarget, 'CustomTarget']] = []
+        final_cmd: T.List[T.Union[str, File, FileTarget]] = []
         for c in cmd:
             if isinstance(c, str):
                 final_cmd.append(c)
@@ -2339,7 +2339,7 @@ class CommandBase:
                     # know the absolute path of
                     self.depend_files.append(File.from_absolute_file(path))
                 final_cmd += c.get_command()
-            elif isinstance(c, (BuildTarget, CustomTarget)):
+            elif isinstance(c, FileTarget):
                 self.dependencies.append(c)
                 final_cmd.append(c)
             elif isinstance(c, CustomTargetIndex):
@@ -2381,8 +2381,8 @@ class CustomTarget(FileTarget, CommandBase):
         self.typename = 'custom'
         # TODO expose keyword arg to make MachineChoice.HOST configurable
         super().__init__(name, subdir, subproject, False, MachineChoice.HOST)
-        self.dependencies: T.List[T.Union[CustomTarget, BuildTarget]] = []
-        self.extra_depends: T.List[T.Union[CustomTarget, BuildTarget]] = []
+        self.dependencies: T.List[FileTarget] = []
+        self.extra_depends: T.List[FileTarget] = []
         self.depend_files = [] # Files that this target depends on but are not on the command line.
         self.depfile = None
         self.process_kwargs(kwargs, backend)
@@ -2406,13 +2406,13 @@ class CustomTarget(FileTarget, CommandBase):
         deps = self.dependencies[:]
         deps += self.extra_depends
         for c in self.sources:
-            if isinstance(c, (BuildTarget, CustomTarget)):
+            if isinstance(c, FileTarget):
                 deps.append(c)
             if isinstance(c, CustomTargetIndex):
                 deps.append(c.target)
         return deps
 
-    def get_transitive_build_target_deps(self) -> T.Set[T.Union[BuildTarget, 'CustomTarget']]:
+    def get_transitive_build_target_deps(self) -> T.Set[FileTarget]:
         '''
         Recursively fetch the build targets that this custom target depends on,
         whether through `command:`, `depends:`, or `sources:` The recursion is
@@ -2421,7 +2421,7 @@ class CustomTarget(FileTarget, CommandBase):
         F.ex, if you have a python script that loads a C module that links to
         other DLLs in your project.
         '''
-        bdeps: T.Set[T.Union[BuildTarget, 'CustomTarget']] = set()
+        bdeps: T.Set[FileTarget] = set()
         deps = self.get_target_dependencies()
         for d in deps:
             if isinstance(d, BuildTarget):
@@ -2531,7 +2531,7 @@ class CustomTarget(FileTarget, CommandBase):
             raise InvalidArguments('Argument build_always_stale must be a boolean.')
         extra_deps, depend_files = (extract_as_list(kwargs, c, pop=False) for c in ['depends', 'depend_files'])
         for ed in extra_deps:
-            if not isinstance(ed, (CustomTarget, BuildTarget)):
+            if not isinstance(ed, FileTarget):
                 raise InvalidArguments('Can only depend on toplevel targets: custom_target or build_target '
                                        f'(executable or a library) got: {type(ed)}({ed})')
             self.extra_depends.append(ed)
@@ -2626,8 +2626,8 @@ class CustomTarget(FileTarget, CommandBase):
 class RunTarget(Target, CommandBase):
 
     def __init__(self, name: str,
-                 command: T.Sequence[T.Union[str, File, BuildTarget, 'CustomTarget', 'CustomTargetIndex', programs.ExternalProgram]],
-                 dependencies: T.Sequence[T.Union[BuildTarget, 'CustomTarget']],
+                 command: T.Sequence[T.Union[str, File, FileTarget, 'CustomTargetIndex', programs.ExternalProgram]],
+                 dependencies: T.Sequence[FileTarget],
                  subdir: str,
                  subproject: str,
                  env: T.Optional['EnvironmentVariables'] = None):
@@ -2644,7 +2644,7 @@ class RunTarget(Target, CommandBase):
         repr_str = "<{0} {1}: {2}>"
         return repr_str.format(self.__class__.__name__, self.get_id(), self.command[0])
 
-    def get_dependencies(self) -> T.List[T.Union[BuildTarget, 'CustomTarget']]:
+    def get_dependencies(self) -> T.List[FileTarget]:
         return self.dependencies
 
     def get_generated_sources(self) -> T.List['GeneratedTypes']:
@@ -2671,7 +2671,7 @@ class RunTarget(Target, CommandBase):
         return "@run"
 
 class AliasTarget(RunTarget):
-    def __init__(self, name: str, dependencies: T.Sequence[T.Union[BuildTarget, 'CustomTarget']],
+    def __init__(self, name: str, dependencies: T.Sequence[FileTarget],
                  subdir: str, subproject: str):
         super().__init__(name, [], dependencies, subdir, subproject)
 
@@ -2851,7 +2851,7 @@ def get_sources_string_names(sources, backend):
     for s in sources:
         if isinstance(s, str):
             names.append(s)
-        elif isinstance(s, (BuildTarget, CustomTarget, CustomTargetIndex, GeneratedList)):
+        elif isinstance(s, (FileTarget, CustomTargetIndex, GeneratedList)):
             names += s.get_outputs()
         elif isinstance(s, ExtractedObjects):
             names += s.get_outputs(backend)

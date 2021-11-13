@@ -37,7 +37,7 @@ class BaseTest(TypedDict):
     should_fail: bool
     timeout: int
     workdir: T.Optional[str]
-    depends: T.List[T.Union[build.CustomTarget, build.BuildTarget]]
+    depends: T.List[build.FileTarget]
     priority: int
     env: build.EnvironmentVariables
     suite: T.List[str]
@@ -90,7 +90,7 @@ class FuncGenerator(TypedDict):
     output: T.List[str]
     depfile: T.Optional[str]
     capture:  bool
-    depends: T.List[T.Union[build.BuildTarget, build.CustomTarget]]
+    depends: T.List[build.FileTarget]
 
 
 class GeneratorProcess(TypedDict):
@@ -159,8 +159,8 @@ class FuncAddLanguages(ExtractRequired):
 
 class RunTarget(TypedDict):
 
-    command: T.List[T.Union[str, build.BuildTarget, build.CustomTarget, ExternalProgram, File]]
-    depends: T.List[T.Union[build.BuildTarget, build.CustomTarget]]
+    command: T.List[T.Union[str, build.FileTarget, ExternalProgram, File]]
+    depends: T.List[build.FileTarget]
     env: build.EnvironmentVariables
 
 
@@ -170,15 +170,15 @@ class CustomTarget(TypedDict):
     build_always_stale: bool
     build_by_default: bool
     capture: bool
-    command: T.List[T.Union[str, build.BuildTarget, build.CustomTarget,
+    command: T.List[T.Union[str, build.FileTarget,
                             build.CustomTargetIndex, ExternalProgram, File]]
     consonle: bool
     depend_files: T.List[FileOrString]
-    depends: T.List[T.Union[build.BuildTarget, build.CustomTarget]]
+    depends: T.List[build.FileTarget]
     depfile: T.Optional[str]
     env: build.EnvironmentVariables
     feed: bool
-    input: T.List[T.Union[str, build.BuildTarget, build.CustomTarget, build.CustomTargetIndex,
+    input: T.List[T.Union[str, build.FileTarget, build.CustomTargetIndex,
                           build.ExtractedObjects, build.GeneratedList, ExternalProgram, File]]
     install: bool
     install_dir: T.List[T.Union[str, bool]]

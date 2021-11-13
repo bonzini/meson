@@ -17,7 +17,7 @@ import typing as T
 
 from . import ExtensionModule, ModuleReturnValue
 from .. import mlog
-from ..build import BothLibraries, BuildTarget, CustomTargetIndex, Executable, ExtractedObjects, GeneratedList, IncludeDirs, CustomTarget
+from ..build import BothLibraries, BuildTarget, CustomTargetIndex, Executable, ExtractedObjects, FileTarget, GeneratedList, IncludeDirs, CustomTarget
 from ..dependencies import Dependency, ExternalLibrary
 from ..interpreter.interpreter import TEST_KWARGS
 from ..interpreterbase import ContainerTypeInfo, InterpreterException, KwargInfo, FeatureNew, typed_kwargs, typed_pos_args, noPosargs
@@ -168,7 +168,7 @@ class RustModule(ExtensionModule):
         KwargInfo('include_directories', ContainerTypeInfo(list, IncludeDirs), default=[], listify=True),
         KwargInfo(
             'input',
-            ContainerTypeInfo(list, (File, GeneratedList, BuildTarget, BothLibraries, ExtractedObjects, CustomTargetIndex, CustomTarget, str), allow_empty=False),
+            ContainerTypeInfo(list, (File, GeneratedList, FileTarget, BothLibraries, ExtractedObjects, CustomTargetIndex, str), allow_empty=False),
             default=[],
             listify=True,
             required=True,
