@@ -307,7 +307,7 @@ class Backend:
     def generate(self) -> None:
         raise RuntimeError(f'generate is not implemented in {type(self).__name__}')
 
-    def get_target_filename(self, t: T.Union[build.Target, build.CustomTargetIndex], *, warn_multi_output: bool = True) -> str:
+    def get_target_filename(self, t: T.Union[build.FileTarget, build.CustomTargetIndex], *, warn_multi_output: bool = True) -> str:
         if isinstance(t, build.CustomTarget):
             if warn_multi_output and len(t.get_outputs()) != 1:
                 mlog.warning(f'custom_target {t.name!r} has more than one output! '
@@ -320,7 +320,7 @@ class Backend:
             filename = t.get_filename()
         return os.path.join(self.get_target_dir(t), filename)
 
-    def get_target_filename_abs(self, target: T.Union[build.Target, build.CustomTargetIndex]) -> str:
+    def get_target_filename_abs(self, target: T.Union[build.FileTarget, build.CustomTargetIndex]) -> str:
         return os.path.join(self.environment.get_build_dir(), self.get_target_filename(target))
 
     def get_base_options_for_target(self, target: build.BuildTarget) -> OptionOverrideProxy:
@@ -363,7 +363,7 @@ class Backend:
                 curdir = '.'
         return compiler.get_include_args(curdir, False)
 
-    def get_target_filename_for_linking(self, target: T.Union[build.Target, build.CustomTargetIndex]) -> T.Optional[str]:
+    def get_target_filename_for_linking(self, target: T.Union[build.FileTarget, build.CustomTargetIndex]) -> T.Optional[str]:
         # On some platforms (msvc for instance), the file that is used for
         # dynamic linking is not the same as the dynamic library itself. This
         # file is called an import library, and we want to link against that.
@@ -408,15 +408,15 @@ class Backend:
             return os.path.join(self.build_to_src, target_dir)
         return self.build_to_src
 
-    def get_target_private_dir(self, target: T.Union[build.BuildTarget, build.CustomTarget, build.CustomTargetIndex]) -> str:
+    def get_target_private_dir(self, target: T.Union[build.FileTarget, build.CustomTargetIndex]) -> str:
         return os.path.join(self.get_target_filename(target, warn_multi_output=False) + '.p')
 
-    def get_target_private_dir_abs(self, target: T.Union[build.BuildTarget, build.CustomTarget, build.CustomTargetIndex]) -> str:
+    def get_target_private_dir_abs(self, target: T.Union[build.FileTarget, build.CustomTargetIndex]) -> str:
         return os.path.join(self.environment.get_build_dir(), self.get_target_private_dir(target))
 
     @lru_cache(maxsize=None)
     def get_target_generated_dir(
-            self, target: T.Union[build.BuildTarget, build.CustomTarget, build.CustomTargetIndex],
+            self, target: T.Union[build.FileTarget, build.CustomTargetIndex],
             gensrc: T.Union[build.CustomTarget, build.CustomTargetIndex, build.GeneratedList],
             src: str) -> str:
         """
@@ -1021,7 +1021,7 @@ class Backend:
                 commands += compiler.get_include_args(priv_dir, False)
         return commands
 
-    def build_target_link_arguments(self, compiler: 'Compiler', deps: T.List[build.Target]) -> T.List[str]:
+    def build_target_link_arguments(self, compiler: 'Compiler', deps: T.List[build.FileTarget]) -> T.List[str]:
         args: T.List[str] = []
         for d in deps:
             if not d.is_linkable_target():
@@ -1142,7 +1142,7 @@ class Backend:
                     cmd_args.append(a)
                 elif isinstance(a, str):
                     cmd_args.append(a)
-                elif isinstance(a, (build.BuildTarget, build.CustomTarget, build.CustomTargetIndex)):
+                elif isinstance(a, (build.FileTarget, build.CustomTargetIndex)):
                     cmd_args.extend(self.construct_target_rel_paths(a, t.workdir))
                 else:
                     raise MesonException('Bad object in test command.')
