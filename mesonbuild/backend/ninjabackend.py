@@ -669,7 +669,7 @@ class NinjaBackend(backends.Backend):
                 return False
         return True
 
-    def create_target_source_introspection(self, target: build.Target, comp: compilers.Compiler, parameters, sources, generated_sources):
+    def create_target_source_introspection(self, target: build.BuildTarget, comp: compilers.Compiler, parameters, sources, generated_sources):
         '''
         Adds the source file introspection information for a language of a target
 

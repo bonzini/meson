@@ -431,8 +431,7 @@ class Backend:
         # target that the GeneratedList is used in
         return os.path.join(self.get_target_private_dir(target), src)
 
-    def get_unity_source_file(self, target: T.Union[build.BuildTarget, build.CustomTarget, build.CustomTargetIndex],
-                              suffix: str, number: int) -> mesonlib.File:
+    def get_unity_source_file(self, target: build.BuildTarget, suffix: str, number: int) -> mesonlib.File:
         # There is a potential conflict here, but it is unlikely that
         # anyone both enables unity builds and has a file called foo-unity.cpp.
         osrc = f'{target.name}-unity{number}.{suffix}'
@@ -1143,7 +1142,7 @@ class Backend:
                     cmd_args.append(a)
                 elif isinstance(a, str):
                     cmd_args.append(a)
-                elif isinstance(a, (build.Target, build.CustomTargetIndex)):
+                elif isinstance(a, (build.BuildTarget, build.CustomTarget, build.CustomTargetIndex)):
                     cmd_args.extend(self.construct_target_rel_paths(a, t.workdir))
                 else:
                     raise MesonException('Bad object in test command.')
@@ -1350,7 +1349,7 @@ class Backend:
                     deps.append(os.path.join(self.build_to_src, target.subdir, i))
         return deps
 
-    def get_custom_target_output_dir(self, target: T.Union[build.Target, build.CustomTargetIndex]) -> str:
+    def get_custom_target_output_dir(self, target: T.Union[build.CustomTarget, build.CustomTargetIndex]) -> str:
         # The XCode backend is special. A target foo/bar does
         # not go to ${BUILDDIR}/foo/bar but instead to
         # ${BUILDDIR}/${BUILDTYPE}/foo/bar.
