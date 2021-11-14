@@ -659,9 +659,6 @@ class Target(HoldableObject):
     def is_linkable_target(self) -> bool:
         return False
 
-    def get_outputs(self) -> T.List[str]:
-        return []
-
     def should_install(self) -> bool:
         return False
 
@@ -680,6 +677,10 @@ class FileTarget(Target, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def get_filename(self) -> str:
+        pass
+
+    @abc.abstractmethod
+    def get_outputs(self) -> T.List[str]:
         pass
 
     def get_sources(self) -> T.List[T.Union[str, 'SourceOutputs']]:

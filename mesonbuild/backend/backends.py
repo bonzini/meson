@@ -1160,7 +1160,7 @@ class Backend:
     def write_test_serialisation(self, tests: T.List['Test'], datafile: T.BinaryIO) -> None:
         pickle.dump(self.create_test_serialisation(tests), datafile)
 
-    def construct_target_rel_paths(self, t: T.Union[build.Target, build.CustomTargetIndex], workdir: T.Optional[str]) -> T.List[str]:
+    def construct_target_rel_paths(self, t: T.Union[build.FileTarget, build.CustomTargetIndex], workdir: T.Optional[str]) -> T.List[str]:
         target_dir = self.get_target_dir(t)
         # ensure that test executables can be run when passed as arguments
         if isinstance(t, build.Executable) and workdir is None:
@@ -1169,7 +1169,6 @@ class Backend:
         if isinstance(t, build.BuildTarget):
             outputs = [t.get_filename()]
         else:
-            assert isinstance(t, (build.CustomTarget, build.CustomTargetIndex))
             outputs = t.get_outputs()
 
         outputs = [os.path.join(target_dir, x) for x in outputs]
@@ -1553,6 +1552,7 @@ class Backend:
         for t in self.build.get_targets().values():
             if not t.should_install():
                 continue
+            assert isinstance(t, build.FileTarget)
             outdirs, install_dir_name, custom_install_dir = t.get_install_dir(self.environment)
             # Sanity-check the outputs and install_dirs
             num_outdirs, num_out = len(outdirs), len(t.get_outputs())

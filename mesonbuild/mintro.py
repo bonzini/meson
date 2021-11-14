@@ -230,19 +230,21 @@ def list_targets(builddata: build.Build, installdata: backends.InstallData, back
             'id': idname,
             'type': target.get_typename(),
             'defined_in': os.path.normpath(os.path.join(src_dir, target.subdir, 'meson.build')),
-            'filename': [os.path.join(build_dir, outdir, x) for x in target.get_outputs()],
+            'filename': [],
             'build_by_default': target.build_by_default,
             'target_sources': backend.get_introspection_data(idname, target),
             'extra_files': [os.path.normpath(os.path.join(src_dir, x.subdir, x.fname)) for x in target.extra_files],
-            'subproject': target.subproject or None
+            'subproject': target.subproject or None,
+            'installed': False
         }
 
+        if isinstance(target, build.FileTarget):
+            t['filename'] = [os.path.join(build_dir, outdir, x) for x in target.get_outputs()],
         if installdata and target.should_install():
+            assert isinstance(target, build.FileTarget)
             t['installed'] = True
             ifn = [install_lookuptable.get(x, [None]) for x in target.get_outputs()]
             t['install_filename'] = [x for sublist in ifn for x in sublist]  # flatten the list
-        else:
-            t['installed'] = False
         tlist.append(t)
     return tlist
 
