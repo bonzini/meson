@@ -723,8 +723,10 @@ class NinjaBackend(backends.Backend):
             pass
         if isinstance(target, build.CustomTarget):
             self.generate_custom_target(target)
+            return
         if isinstance(target, build.RunTarget):
             self.generate_run_target(target)
+            return
         compiled_sources = []
         source2object = {}
         name = target.get_id()
