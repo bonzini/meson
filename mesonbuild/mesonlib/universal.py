@@ -1687,6 +1687,8 @@ def substring_is_in_list(substr: str, strlist: T.List[str]) -> bool:
 
 
 class OrderedSet(T.MutableSet[_T]):
+    __slots__ = ['__container']
+
     """A set that preserves the order in which items are added, by first
     insertion.
     """
@@ -1735,8 +1737,9 @@ class OrderedSet(T.MutableSet[_T]):
         return item
 
     def update(self, iterable: T.Iterable[_T]) -> None:
+        c = self.__container
         for item in iterable:
-            self.__container[item] = None
+            c[item] = None
 
     def difference(self, set_: T.Union[T.Set[_T], 'OrderedSet[_T]']) -> 'OrderedSet[_T]':
         return type(self)(e for e in self if e not in set_)
