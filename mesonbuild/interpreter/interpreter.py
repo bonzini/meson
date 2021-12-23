@@ -1216,7 +1216,7 @@ external dependencies (including libraries) must go to "dependencies".''')
         else:
             # absent 'native' means 'both' for backwards compatibility
             tv = FeatureNew.get_target_version(self.subproject)
-            if FeatureNew.check_version(tv, '0.54.0'):
+            if tv >= mesonlib.Version('0.54.0'):
                 mlog.warning('add_languages is missing native:, assuming languages are wanted for both host and build.',
                              location=self.current_node)
 

@@ -497,9 +497,8 @@ class FeatureCheckBase(metaclass=abc.ABCMeta):
             return ''
         return mesonlib.project_meson_versions[subproject]
 
-    @staticmethod
     @abc.abstractmethod
-    def check_version(target_version: mesonlib.Version, feature_Version: str) -> bool:
+    def check_version(self, target_version: mesonlib.Version) -> bool:
         pass
 
     def use(self, subproject: str) -> None:
@@ -508,7 +507,7 @@ class FeatureCheckBase(metaclass=abc.ABCMeta):
         if tv == '':
             return
         # Target version is new enough
-        if self.check_version(tv, self.feature_version):
+        if self.check_version(tv):
             return
         # Feature is too new for target version, register it
         if subproject not in self.feature_registry:
@@ -566,9 +565,8 @@ class FeatureNew(FeatureCheckBase):
     # Format: {subproject: {feature_version: set(feature_names)}}
     feature_registry = {}  # type: T.ClassVar[T.Dict[str, T.Dict[str, T.Set[str]]]]
 
-    @staticmethod
-    def check_version(target_version: mesonlib.Version, feature_version: str) -> bool:
-        return mesonlib.version_compare_condition_with_min(target_version, feature_version)
+    def check_version(self, target_version: mesonlib.Version) -> bool:
+        return mesonlib.version_compare_condition_with_min(target_version, self.feature_version)
 
     @staticmethod
     def get_warning_str_prefix(tv: str) -> str:
@@ -593,10 +591,9 @@ class FeatureDeprecated(FeatureCheckBase):
     # Format: {subproject: {feature_version: set(feature_names)}}
     feature_registry = {}  # type: T.ClassVar[T.Dict[str, T.Dict[str, T.Set[str]]]]
 
-    @staticmethod
-    def check_version(target_version: mesonlib.Version, feature_version: str) -> bool:
+    def check_version(self, target_version: mesonlib.Version) -> bool:
         # For deprecation checks we need to return the inverse of FeatureNew checks
-        return not mesonlib.version_compare_condition_with_min(target_version, feature_version)
+        return not mesonlib.version_compare_condition_with_min(target_version, self.feature_version)
 
     @staticmethod
     def get_warning_str_prefix(tv: str) -> str:
