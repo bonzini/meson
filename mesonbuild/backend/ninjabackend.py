@@ -312,16 +312,16 @@ class NinjaBuildElement:
         self.all_outputs = all_outputs
 
     def add_dep(self, dep):
-        if isinstance(dep, list):
-            self.deps.update(dep)
-        else:
-            self.deps.add(dep)
+        self.deps.add(dep)
 
-    def add_orderdep(self, dep):
-        if isinstance(dep, list):
-            self.orderdeps.update(dep)
-        else:
-            self.orderdeps.add(dep)
+    def add_deps(self, dep):
+        self.deps.update(dep)
+
+    def add_orderdep(self, dep: str):
+        self.orderdeps.add(dep)
+
+    def add_orderdeps(self, dep: T.List[str]):
+        self.orderdeps.update(dep)
 
     def add_item(self, name, elems):
         # Always convert from GCC-style argument naming to the naming used by the
@@ -966,11 +966,11 @@ class NinjaBackend(backends.Backend):
         else:
             rulename = 'CUSTOM_COMMAND_DEP'
         elem = NinjaBuildElement(self.all_outputs, ofilenames, rulename, srcs)
-        elem.add_dep(deps)
+        elem.add_deps(deps)
         for d in target.extra_depends:
             # Add a dependency on all the outputs of this target
-            for output in d.get_outputs():
-                elem.add_dep(os.path.join(self.get_target_dir(d), output))
+            elem.add_deps([os.path.join(self.get_target_dir(d), output)
+                           for output in d.get_outputs()])
 
         cmd, reason = self.as_meson_exe_cmdline(target.name, target.command[0], cmd[1:],
                                                 extra_bdeps=target.get_transitive_build_target_deps(),
@@ -1023,7 +1023,7 @@ class NinjaBackend(backends.Backend):
             self.create_target_alias(internal_target_name)
         deps = self.unwrap_dep_list(target)
         deps += self.get_custom_target_depend_files(target)
-        elem.add_dep(deps)
+        elem.add_deps(deps)
         self.add_build(elem)
         self.processed_targets.add(target.get_id())
 
@@ -1235,7 +1235,7 @@ class NinjaBackend(backends.Backend):
         # grab everything in the final package.
         commands += ['-C', self.get_target_private_dir(target), '.']
         elem = NinjaBuildElement(self.all_outputs, outname_rel, jar_rule, [])
-        elem.add_dep(class_dep_list)
+        elem.add_deps(class_dep_list)
         elem.add_item('ARGS', commands)
         self.add_build(elem)
         # Create introspection information
@@ -1305,7 +1305,7 @@ class NinjaBackend(backends.Backend):
         commands += self.build.get_global_args(compiler, target.for_machine)
 
         elem = NinjaBuildElement(self.all_outputs, outputs, self.get_compiler_rule_name('cs', target.for_machine), rel_srcs + generated_rel_srcs)
-        elem.add_dep(deps)
+        elem.add_deps(deps)
         elem.add_item('ARGS', commands)
         self.add_build(elem)
 
@@ -1339,7 +1339,7 @@ class NinjaBackend(backends.Backend):
         plain_class_path = src.fname[:-4] + 'class'
         rel_obj = os.path.join(self.get_target_private_dir(target), plain_class_path)
         element = NinjaBuildElement(self.all_outputs, rel_obj, self.compiler_to_rule_name(compiler), rel_src)
-        element.add_dep(deps)
+        element.add_deps(deps)
         element.add_item('ARGS', args)
         self.add_build(element)
         return plain_class_path
@@ -1538,7 +1538,7 @@ class NinjaBackend(backends.Backend):
                                     self.compiler_to_rule_name(valac),
                                     all_files + dependency_vapis)
         element.add_item('ARGS', args)
-        element.add_dep(extra_dep_files)
+        element.add_deps(extra_dep_files)
         self.add_build(element)
         self.create_target_source_introspection(target, valac, args, all_files, [])
         return other_src[0], other_src[1], vala_c_src
@@ -1747,9 +1747,9 @@ class NinjaBackend(backends.Backend):
         compiler_name = self.get_compiler_rule_name('rust', target.for_machine)
         element = NinjaBuildElement(self.all_outputs, target_name, compiler_name, main_rust_file)
         if orderdeps:
-            element.add_orderdep(orderdeps)
+            element.add_orderdeps(orderdeps)
         if deps:
-            element.add_dep(deps)
+            element.add_deps(deps)
         element.add_item('ARGS', args)
         element.add_item('targetdep', depfile)
         element.add_item('cratetype', cratetype)
@@ -1879,15 +1879,15 @@ class NinjaBackend(backends.Backend):
 
         # Swiftc does not seem to be able to emit objects and module files in one go.
         elem = NinjaBuildElement(self.all_outputs, rel_objects, rulename, abssrc)
-        elem.add_dep(in_module_files + rel_generated)
-        elem.add_dep(abs_headers)
+        elem.add_deps(in_module_files + rel_generated)
+        elem.add_deps(abs_headers)
         elem.add_item('ARGS', compile_args + header_imports + abs_generated + module_includes)
         elem.add_item('RUNDIR', rundir)
         self.add_build(elem)
         elem = NinjaBuildElement(self.all_outputs, out_module_name,
                                  self.get_compiler_rule_name('swift', target.for_machine),
                                  abssrc)
-        elem.add_dep(in_module_files + rel_generated)
+        elem.add_deps(in_module_files + rel_generated)
         elem.add_item('ARGS', compile_args + abs_generated + module_includes + swiftc.get_mod_gen_args())
         elem.add_item('RUNDIR', rundir)
         self.add_build(elem)
@@ -1897,8 +1897,8 @@ class NinjaBackend(backends.Backend):
             self.add_build(elem)
         elif isinstance(target, build.Executable):
             elem = NinjaBuildElement(self.all_outputs, self.get_target_filename(target), rulename, [])
-            elem.add_dep(rel_objects)
-            elem.add_dep(link_deps)
+            elem.add_deps(rel_objects)
+            elem.add_deps(link_deps)
             elem.add_item('ARGS', link_args + swiftc.get_std_exe_link_args() + objects + abs_link_deps)
             elem.add_item('RUNDIR', rundir)
             self.add_build(elem)
@@ -2210,11 +2210,11 @@ https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47485'''))
             os.makedirs(abs_pdir, exist_ok=True)
 
             elem = NinjaBuildElement(self.all_outputs, outfiles, rulename, infilename)
-            elem.add_dep([self.get_target_filename(x) for x in generator.depends])
+            elem.add_deps([self.get_target_filename(x) for x in generator.depends])
             if generator.depfile is not None:
                 elem.add_item('DEPFILE', depfile)
-            if len(extra_dependencies) > 0:
-                elem.add_dep(extra_dependencies)
+            if extra_dependencies:
+                elem.add_deps(extra_dependencies)
 
             if len(generator.outputs) == 1:
                 what = f'{sole_output!r}'
@@ -2594,17 +2594,15 @@ https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47485'''))
 
         element = NinjaBuildElement(self.all_outputs, rel_obj, compiler_name, rel_src)
         self.add_header_deps(target, element, header_deps)
-        for d in extra_deps:
-            element.add_dep(d)
+        element.add_deps(extra_deps)
         for d in order_deps:
             if isinstance(d, File):
                 d = d.rel_to_builddir(self.build_to_src)
             elif not self.has_dir_part(d):
                 d = os.path.join(self.get_target_private_dir(target), d)
             element.add_orderdep(d)
-        element.add_dep(pch_dep)
-        for i in self.get_fortran_orderdeps(target, compiler):
-            element.add_orderdep(i)
+        element.add_deps(pch_dep)
+        element.add_orderdeps(self.get_fortran_orderdeps(target, compiler))
         element.add_item('DEPFILE', dep_file)
         element.add_item('ARGS', commands)
 
@@ -3046,7 +3044,7 @@ https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47485'''))
         dep_targets.extend([self.get_dependency_filename(t)
                             for t in target.link_depends])
         elem = NinjaBuildElement(self.all_outputs, outname, linker_rule, obj_list, implicit_outs=implicit_outs)
-        elem.add_dep(dep_targets + custom_target_libraries)
+        elem.add_deps(dep_targets + custom_target_libraries)
         elem.add_item('LINK_ARGS', commands)
         return elem
 
