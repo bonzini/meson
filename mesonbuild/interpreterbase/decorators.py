@@ -487,8 +487,10 @@ class FeatureCheckBase(metaclass=abc.ABCMeta):
 
     def __init__(self, feature_name: str, version: str, extra_message: T.Optional[str] = None):
         self.feature_name = feature_name  # type: str
-        self.feature_version = version    # type: str
         self.extra_message = extra_message or ''  # type: str
+
+        assert version[0].isdigit()
+        self.feature_version = mesonlib.Version(version)    # type: str
 
     @staticmethod
     def get_target_version(subproject: str) -> str:
@@ -566,7 +568,9 @@ class FeatureNew(FeatureCheckBase):
     feature_registry = {}  # type: T.ClassVar[T.Dict[str, T.Dict[str, T.Set[str]]]]
 
     def check_version(self, target_version: mesonlib.Version) -> bool:
-        return mesonlib.version_compare_condition_with_min(target_version, self.feature_version)
+        # determine if the minimum version satisfying target_version exceeds
+        # the minimum version for a feature
+        return self.feature_version <= target_version
 
     @staticmethod
     def get_warning_str_prefix(tv: str) -> str:
@@ -593,7 +597,7 @@ class FeatureDeprecated(FeatureCheckBase):
 
     def check_version(self, target_version: mesonlib.Version) -> bool:
         # For deprecation checks we need to return the inverse of FeatureNew checks
-        return not mesonlib.version_compare_condition_with_min(target_version, self.feature_version)
+        return self.feature_version > target_version
 
     @staticmethod
     def get_warning_str_prefix(tv: str) -> str:
