@@ -60,6 +60,9 @@ FORTRAN_MODULE_PAT = r"^\s*\bmodule\b\s+(\w+)\s*(?:!+.*)*$"
 FORTRAN_SUBMOD_PAT = r"^\s*\bsubmodule\b\s*\((\w+:?\w+)\)\s*(\w+)"
 FORTRAN_USE_PAT = r"^\s*use,?\s*(?:non_intrinsic)?\s*(?:::)?\s*(\w+)"
 
+V_1_9 = mesonlib.Version('1.9.0')
+V_1_10 = mesonlib.Version('1.10.0')
+
 def cmd_quote(s):
     # see: https://docs.microsoft.com/en-us/windows/desktop/api/shellapi/nf-shellapi-commandlinetoargvw#remarks
 
@@ -520,7 +523,8 @@ class NinjaBackend(backends.Backend):
             mlog.log(f'{meson_command} compile -C {builddir}')
         if ninja is None:
             raise MesonException('Could not detect Ninja v1.8.2 or newer')
-        (self.ninja_command, self.ninja_version) = ninja
+        self.ninja_command = ninja[0]
+        self.ninja_version = mesonlib.Version(ninja[1])
         outfilename = os.path.join(self.environment.get_build_dir(), self.ninja_filename)
         tempfilename = outfilename + '~'
         with open(tempfilename, 'w', encoding='utf-8') as outfile:
@@ -580,7 +584,7 @@ class NinjaBackend(backends.Backend):
                           for ext in ['', '_RSP']]
                 rules += [f"{rule}{ext}" for rule in [self.get_pch_rule_name(lang, for_machine)]
                           for ext in ['', '_RSP']]
-        compdb_options = ['-x'] if mesonlib.version_compare(self.ninja_version, '>=1.9') else []
+        compdb_options = ['-x'] if self.ninja_version >= V_1_9 else []
         ninja_compdb = self.ninja_command + ['-t', 'compdb'] + compdb_options + rules
         builddir = self.environment.get_build_dir()
         try:
@@ -886,7 +890,7 @@ class NinjaBackend(backends.Backend):
         self.add_build(elem)
 
     def should_use_dyndeps_for_target(self, target: 'build.BuildTarget') -> bool:
-        if mesonlib.version_compare(self.ninja_version, '<1.10.0'):
+        if self.ninja_version < V_1_10:
             return False
         if 'fortran' in target.compilers:
             return True
@@ -2034,7 +2038,7 @@ class NinjaBackend(backends.Backend):
         '''Use the new Ninja feature for scanning dependencies during build,
         rather than up front. Remove this and all old scanning code once Ninja
         minimum version is bumped to 1.10.'''
-        return mesonlib.version_compare(self.ninja_version, '>=1.10.0')
+        return self.ninja_version >= V_1_10
 
     def generate_fortran_dep_hack(self, crstr: str) -> None:
         if self.use_dyndeps_for_fortran():
