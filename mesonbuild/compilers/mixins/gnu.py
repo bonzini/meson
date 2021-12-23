@@ -334,16 +334,18 @@ class GnuCompiler(GnuLikeCompiler):
         self.id = 'gcc'
         self.defines = defines or {}
         self.base_options.update({OptionKey('b_colorout'), OptionKey('b_lto_threads')})
+        self.is_gcc_4_8 = mesonlib.version_compare(self.version, '>=4.8.0')
+        self.is_gcc_4_9 = mesonlib.version_compare(self.version, '>=4.9.0')
 
     def get_colorout_args(self, colortype: str) -> T.List[str]:
-        if mesonlib.version_compare(self.version, '>=4.9.0'):
+        if self.is_gcc_4_9:
             return gnu_color_args[colortype][:]
         return []
 
     def get_warn_args(self, level: str) -> T.List[str]:
         # Mypy doesn't understand cooperative inheritance
         args = super().get_warn_args(level)
-        if mesonlib.version_compare(self.version, '<4.8.0') and '-Wpedantic' in args:
+        if not self.is_gcc_4_8 and '-Wpedantic' in args:
             # -Wpedantic was added in 4.8.0
             # https://gcc.gnu.org/gcc-4.8/changes.html
             args[args.index('-Wpedantic')] = '-pedantic'
