@@ -252,7 +252,7 @@ class InterpreterBase:
             if result:
                 prev_meson_version = mesonlib.project_meson_versions[self.subproject]
                 if self.tmp_meson_version:
-                    mesonlib.project_meson_versions[self.subproject] = self.tmp_meson_version
+                    mesonlib.project_meson_versions[self.subproject] = Version(self.tmp_meson_version)
                 try:
                     self.evaluate_codeblock(i.block)
                 finally:

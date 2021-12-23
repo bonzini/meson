@@ -499,7 +499,7 @@ class FeatureCheckBase(metaclass=abc.ABCMeta):
 
     @staticmethod
     @abc.abstractmethod
-    def check_version(target_version: str, feature_Version: str) -> bool:
+    def check_version(target_version: mesonlib.Version, feature_Version: str) -> bool:
         pass
 
     def use(self, subproject: str) -> None:
@@ -567,7 +567,7 @@ class FeatureNew(FeatureCheckBase):
     feature_registry = {}  # type: T.ClassVar[T.Dict[str, T.Dict[str, T.Set[str]]]]
 
     @staticmethod
-    def check_version(target_version: str, feature_version: str) -> bool:
+    def check_version(target_version: mesonlib.Version, feature_version: str) -> bool:
         return mesonlib.version_compare_condition_with_min(target_version, feature_version)
 
     @staticmethod
@@ -594,7 +594,7 @@ class FeatureDeprecated(FeatureCheckBase):
     feature_registry = {}  # type: T.ClassVar[T.Dict[str, T.Dict[str, T.Set[str]]]]
 
     @staticmethod
-    def check_version(target_version: str, feature_version: str) -> bool:
+    def check_version(target_version: mesonlib.Version, feature_version: str) -> bool:
         # For deprecation checks we need to return the inverse of FeatureNew checks
         return not mesonlib.version_compare_condition_with_min(target_version, feature_version)
 

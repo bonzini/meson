@@ -144,12 +144,6 @@ __all__ = [
 ]
 
 
-# TODO: this is such a hack, this really should be either in coredata or in the
-# interpreter
-# {subproject: project_meson_version}
-project_meson_versions = collections.defaultdict(str)  # type: T.DefaultDict[str, str]
-
-
 from glob import glob
 
 if os.path.basename(sys.executable) == 'meson.exe':
@@ -740,7 +734,7 @@ def current_vs_supports_modules() -> bool:
 
 # a helper class which implements the same version ordering as RPM
 class Version:
-    def __init__(self, s: str) -> None:
+    def __init__(self, s: str = '') -> None:
         self._s = s
 
         # split into numeric, alphabetic and non-alphanumeric sequences
@@ -868,7 +862,7 @@ def version_compare_many(vstr1: str, conditions: T.Union[str, T.Iterable[str]]) 
 
 # determine if the minimum version satisfying the condition |condition| exceeds
 # the minimum version for a feature |minimum|
-def version_compare_condition_with_min(condition: str, minimum: str) -> bool:
+def version_compare_condition_with_min(condition: Version, minimum: str) -> bool:
     if condition.startswith('>='):
         cmpop = operator.le
         condition = condition[2:]
@@ -890,7 +884,7 @@ def version_compare_condition_with_min(condition: str, minimum: str) -> bool:
     else:
         cmpop = operator.le
 
-    return T.cast(bool, cmpop(Version(minimum), Version(condition)))
+    return T.cast(bool, cmpop(minimum, Version(condition)))
 
 def search_version(text: str) -> str:
     # Usually of the type 4.1.4 but compiler output may contain
@@ -2190,3 +2184,8 @@ class OptionKey:
     def is_base(self) -> bool:
         """Convenience method to check if this is a base option."""
         return self.type is OptionType.BASE
+
+# TODO: this is such a hack, this really should be either in coredata or in the
+# interpreter
+# {subproject: project_meson_version}
+project_meson_versions = collections.defaultdict(Version)  # type: T.DefaultDict[str, Version]
