@@ -792,7 +792,12 @@ class Version:
 
     def __cmp(self, other: 'Version', comparator: T.Callable[[T.Any, T.Any], bool]) -> bool:
         # compare each sequence in order
-        for ours, theirs in zip(self._v, other._v):
+        n = 0
+        while n < len(self._v) and n < len(other._v):
+            ours = self._v[n]
+            theirs = other._v[n]
+            n += 1
+
             # sort a non-digit sequence before a digit sequence
             ours_is_int = isinstance(ours, int)
             theirs_is_int = isinstance(theirs, int)
@@ -802,10 +807,18 @@ class Version:
             if ours != theirs:
                 return comparator(ours, theirs)
 
-        # if equal length, all components have matched, so equal
-        # otherwise, the version with a suffix remaining is greater
-        return comparator(len(self._v), len(other._v))
+        if len(self._v) != len(other._v):
+            # one of the loops will execute zero times
+            while n < len(self._v):
+                if self._v[n]:
+                    return comparator(1, 0)
+                n += 1
+            while n < len(other._v):
+                if self._v[n]:
+                    return comparator(0, 1)
+                n += 1
 
+        return comparator(0, 0)
 
 def _version_extract_cmpop(vstr2: str) -> T.Tuple[T.Callable[[T.Any, T.Any], bool], str]:
     if vstr2.startswith('>='):
@@ -876,20 +889,6 @@ def version_compare_condition_with_min(condition: str, minimum: str) -> bool:
         return False
     else:
         cmpop = operator.le
-
-    # Declaring a project(meson_version: '>=0.46') and then using features in
-    # 0.46.0 is valid, because (knowing the meson versioning scheme) '0.46.0' is
-    # the lowest version which satisfies the constraint '>=0.46'.
-    #
-    # But this will fail here, because the minimum version required by the
-    # version constraint ('0.46') is strictly less (in our version comparison)
-    # than the minimum version needed for the feature ('0.46.0').
-    #
-    # Map versions in the constraint of the form '0.46' to '0.46.0', to embed
-    # this knowledge of the meson versioning scheme.
-    condition = condition.strip()
-    if re.match(r'^\d+.\d+$', condition):
-        condition += '.0'
 
     return T.cast(bool, cmpop(Version(minimum), Version(condition)))
 
