@@ -191,11 +191,14 @@ class CMakeToolchain:
                 continue
 
             if len(exe_list) >= 2 and not self.is_cmdline_option(comp_obj, exe_list[1]):
-                defaults[prefix + 'COMPILER_LAUNCHER'] = [make_abs(exe_list[0])]
+                defaults[f'{prefix}COMPILER_LAUNCHER'] = [make_abs(exe_list[0])]
                 exe_list = exe_list[1:]
 
             exe_list[0] = make_abs(exe_list[0])
-            defaults[prefix + 'COMPILER'] = exe_list
+            defaults[f'{prefix}COMPILER'] = [exe_list[0]]
+            for i in range(1, len(exe_list)):
+                defaults[f'{prefix}COMPILER_ARG{i}'] = [exe_list[i]]
+
             if comp_obj.get_id() == 'clang-cl':
                 defaults['CMAKE_LINKER'] = comp_obj.get_linker_exelist()
 
