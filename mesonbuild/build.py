@@ -1221,13 +1221,13 @@ class BuildTarget(Target):
             if m.is_darwin() or m.is_windows():
                 self.pic = True
             else:
-                self.pic = self._extract_pic_pie(kwargs, 'pic', 'b_staticpic')
+                pic = T.cast('bool', self._extract_pic(kwargs, 'pic', 'b_staticpic'))
         if isinstance(self, Executable) or (isinstance(self, StaticLibrary) and not self.pic):
             # Executables must be PIE on Android
             if self.environment.machines[self.for_machine].is_android():
                 self.pie = True
             else:
-                self.pie = self._extract_pic_pie(kwargs, 'pie', 'b_pie') or None
+                self.pie = self._extract_pic_pie(kwargs, 'pie', 'b_pie')
 
         self.implicit_include_directories = kwargs.get('implicit_include_directories', True)
         if not isinstance(self.implicit_include_directories, bool):
@@ -1247,24 +1247,34 @@ class BuildTarget(Target):
             raise InvalidArguments(f'Invalid rust_dependency_map "{rust_dependency_map}": must be a dictionary with string values.')
         self.rust_dependency_map = rust_dependency_map
 
-    def _extract_pic_pie(self, kwargs: T.Dict[str, T.Any], arg: str, option: str) -> bool:
+    def _extract_pic_pie(self, kwargs: T.Dict[str, T.Any], arg: str, option: str, allow_none: bool = True) -> T.Optional[bool]:
         # Check if we have -fPIC, -fpic, -fPIE, or -fpie in cflags
         all_flags = self.extra_args['c'] + self.extra_args['cpp']
         if '-f' + arg.lower() in all_flags or '-f' + arg.upper() in all_flags:
             mlog.warning(f"Use the '{arg}' kwarg instead of passing '-f{arg}' manually to {self.name!r}")
             return True
 
+        val: T.Any
         k = OptionKey(option)
         if kwargs.get(arg) is not None:
-            val = T.cast('bool', kwargs[arg])
+            val = kwargs[arg]
         elif k in self.environment.coredata.options:
-            val = self.environment.coredata.options[k].value
+            val = self.environment.coredata.options[k].to_bool_or_none()
         else:
-            val = False
+            val = None if allow_none else False
 
-        if not isinstance(val, bool):
+        if isinstance(val, bool):
+            return val
+        if not allow_none:
             raise InvalidArguments(f'Argument {arg} to {self.name!r} must be boolean')
-        return val
+
+        if val is None:
+            return val
+        raise InvalidArguments(f'Argument {arg} to {self.name!r} must be boolean or feature')
+
+    def _extract_pic(self, kwargs: T.Dict[str, T.Any], arg: str, option: str) -> bool:
+        val = self._extract_pic_pie(kwargs, arg, option, False)
+        return T.cast('bool', val)
 
     def get_filename(self) -> str:
         return self.filename
