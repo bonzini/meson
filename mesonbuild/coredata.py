@@ -102,7 +102,8 @@ class MesonVersionMismatchException(MesonException):
 class UserOption(T.Generic[_T], HoldableObject):
     def __init__(self, description: str, choices: T.Optional[T.Union[str, T.List[_T]]],
                  yielding: bool,
-                 deprecated: T.Union[bool, str, T.Dict[str, str], T.List[str]] = False):
+                 deprecated: T.Union[bool, str, T.Dict[str, str], T.List[str]] = False,
+                 deprecated_version: T.Optional[str] = None):
         super().__init__()
         self.choices = choices
         self.description = description
@@ -110,6 +111,7 @@ class UserOption(T.Generic[_T], HoldableObject):
             raise MesonException('Value of "yielding" must be a boolean.')
         self.yielding = yielding
         self.deprecated = deprecated
+        self.deprecated_version = deprecated_version
         self.readonly = False
 
     def listify(self, value: T.Any) -> T.List[T.Any]:
@@ -132,8 +134,10 @@ class UserOption(T.Generic[_T], HoldableObject):
 
 class UserStringOption(UserOption[str]):
     def __init__(self, description: str, value: T.Any, yielding: bool = DEFAULT_YIELDING,
-                 deprecated: T.Union[bool, str, T.Dict[str, str], T.List[str]] = False):
-        super().__init__(description, None, yielding, deprecated)
+                 deprecated: T.Union[bool, str, T.Dict[str, str], T.List[str]] = False,
+                 deprecated_version: T.Optional[str] = None):
+        super().__init__(description, None, yielding,
+                         deprecated, deprecated_version)
         self.set_value(value)
 
     def validate_value(self, value: T.Any) -> str:
@@ -143,8 +147,10 @@ class UserStringOption(UserOption[str]):
 
 class UserBooleanOption(UserOption[bool]):
     def __init__(self, description: str, value: bool, yielding: bool = DEFAULT_YIELDING,
-                 deprecated: T.Union[bool, str, T.Dict[str, str], T.List[str]] = False):
-        super().__init__(description, [True, False], yielding, deprecated)
+                 deprecated: T.Union[bool, str, T.Dict[str, str], T.List[str]] = False,
+                 deprecated_version: T.Optional[str] = None):
+        super().__init__(description, [True, False], yielding,
+                         deprecated, deprecated_version)
         self.set_value(value)
 
     def __bool__(self) -> bool:
@@ -163,7 +169,8 @@ class UserBooleanOption(UserOption[bool]):
 
 class UserIntegerOption(UserOption[int]):
     def __init__(self, description: str, value: T.Any, yielding: bool = DEFAULT_YIELDING,
-                 deprecated: T.Union[bool, str, T.Dict[str, str], T.List[str]] = False):
+                 deprecated: T.Union[bool, str, T.Dict[str, str], T.List[str]] = False,
+                 deprecated_version: T.Optional[str] = None):
         min_value, max_value, default_value = value
         self.min_value = min_value
         self.max_value = max_value
@@ -173,7 +180,8 @@ class UserIntegerOption(UserOption[int]):
         if max_value is not None:
             c.append('<=' + str(max_value))
         choices = ', '.join(c)
-        super().__init__(description, choices, yielding, deprecated)
+        super().__init__(description, choices, yielding,
+                         deprecated, deprecated_version)
         self.set_value(default_value)
 
     def validate_value(self, value: T.Any) -> int:
@@ -202,8 +210,10 @@ class OctalInt(int):
 
 class UserUmaskOption(UserIntegerOption, UserOption[T.Union[str, OctalInt]]):
     def __init__(self, description: str, value: T.Any, yielding: bool = DEFAULT_YIELDING,
-                 deprecated: T.Union[bool, str, T.Dict[str, str], T.List[str]] = False):
-        super().__init__(description, (0, 0o777, value), yielding, deprecated)
+                 deprecated: T.Union[bool, str, T.Dict[str, str], T.List[str]] = False,
+                 deprecated_version: T.Optional[str] = None):
+        super().__init__(description, (0, 0o777, value), yielding,
+                         deprecated, deprecated_version)
         self.choices = ['preserve', '0000-0777']
 
     def printable_value(self) -> str:
@@ -225,8 +235,10 @@ class UserUmaskOption(UserIntegerOption, UserOption[T.Union[str, OctalInt]]):
 class UserComboOption(UserOption[str]):
     def __init__(self, description: str, choices: T.List[str], value: T.Any,
                  yielding: bool = DEFAULT_YIELDING,
-                 deprecated: T.Union[bool, str, T.Dict[str, str], T.List[str]] = False):
-        super().__init__(description, choices, yielding, deprecated)
+                 deprecated: T.Union[bool, str, T.Dict[str, str], T.List[str]] = False,
+                 deprecated_version: T.Optional[str] = None):
+        super().__init__(description, choices, yielding,
+                         deprecated, deprecated_version)
         if not isinstance(self.choices, list):
             raise MesonException('Combo choices must be an array.')
         for i in self.choices:
@@ -253,8 +265,10 @@ class UserArrayOption(UserOption[T.List[str]]):
                  split_args: bool = False,
                  allow_dups: bool = False, yielding: bool = DEFAULT_YIELDING,
                  choices: T.Optional[T.List[str]] = None,
-                 deprecated: T.Union[bool, str, T.Dict[str, str], T.List[str]] = False):
-        super().__init__(description, choices if choices is not None else [], yielding, deprecated)
+                 deprecated: T.Union[bool, str, T.Dict[str, str], T.List[str]] = False,
+                 deprecated_version: T.Optional[str] = None):
+        super().__init__(description, choices if choices is not None else [], yielding,
+                         deprecated, deprecated_version)
         self.split_args = split_args
         self.allow_dups = allow_dups
         self.set_value(value)
@@ -310,8 +324,10 @@ class UserFeatureOption(UserComboOption):
     static_choices = ['enabled', 'disabled', 'auto']
 
     def __init__(self, description: str, value: T.Any, yielding: bool = DEFAULT_YIELDING,
-                 deprecated: T.Union[bool, str, T.Dict[str, str], T.List[str]] = False):
-        super().__init__(description, self.static_choices, value, yielding, deprecated)
+                 deprecated: T.Union[bool, str, T.Dict[str, str], T.List[str]] = False,
+                 deprecated_version: T.Optional[str] = None):
+        super().__init__(description, self.static_choices, value, yielding,
+                         deprecated, deprecated_version)
         self.name: T.Optional[str] = None  # TODO: Refactor options to all store their name
 
     def is_enabled(self) -> bool:
