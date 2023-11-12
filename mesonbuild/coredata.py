@@ -776,7 +776,8 @@ class CoreData:
 
         raise MesonException(f'Tried to get unknown builtin option {str(key)}')
 
-    def set_option(self, key: OptionKey, value, first_invocation: bool = False) -> bool:
+    def set_option(self, key: OptionKey, value, first_invocation: bool = False,
+                   meson_version: T.Optional[str] = None) -> bool:
         dirty = False
         if key.is_builtin():
             if key.name == 'prefix':
@@ -790,18 +791,19 @@ class CoreData:
         except KeyError:
             raise MesonException(f'Tried to set unknown builtin option {str(key)}')
 
+        deprecation_msg: T.Optional[str] = None
         if opt.deprecated is True:
-            mlog.deprecation(f'Option {key.name!r} is deprecated')
+            deprecation_msg = f'Option {key.name!r} is deprecated'
         elif isinstance(opt.deprecated, list):
             for v in opt.listify(value):
                 if v in opt.deprecated:
-                    mlog.deprecation(f'Option {key.name!r} value {v!r} is deprecated')
+                    deprecation_msg = f'Option {key.name!r} value {v!r} is deprecated'
         elif isinstance(opt.deprecated, dict):
             def replace(v):
                 nonlocal deprecation_msg
                 newvalue = opt.deprecated.get(v)
                 if newvalue is not None:
-                    mlog.deprecation(f'Option {key.name!r} value {v!r} is replaced by {newvalue!r}')
+                    deprecation_msg = f'Option {key.name!r} value {v!r} is replaced by {newvalue!r}'
                     return newvalue
                 return v
             newvalue = [replace(v) for v in opt.listify(value)]
@@ -817,8 +819,14 @@ class CoreData:
             # by a feature option with a different name.
             newname = opt.deprecated
             newkey = OptionKey.from_string(newname).evolve(subproject=key.subproject)
-            mlog.deprecation(f'Option {key.name!r} is replaced by {newname!r}')
+            deprecation_msg = f'Option {key.name!r} is replaced by {newname!r}'
             dirty |= self.set_option(newkey, value, first_invocation)
+
+        if deprecation_msg is not None and \
+                (opt.deprecated_version is None or
+                 meson_version is None or
+                 mesonlib.version_compare(meson_version, f'>={opt.deprecated_version}')):
+            mlog.deprecation(deprecation_msg)
 
         changed = opt.set_value(value)
         if changed and opt.readonly and not first_invocation:
@@ -948,7 +956,8 @@ class CoreData:
 
         return dirty
 
-    def set_options(self, options: T.Dict[OptionKey, T.Any], subproject: str = '', first_invocation: bool = False) -> bool:
+    def set_options(self, options: T.Dict[OptionKey, T.Any], subproject: str = '', first_invocation: bool = False,
+                    meson_version: T.Optional[str] = None) -> bool:
         dirty = False
         if not self.is_cross_build():
             options = {k: v for k, v in options.items() if k.machine is not MachineChoice.BUILD}
@@ -966,7 +975,7 @@ class CoreData:
             if k == pfk:
                 continue
             elif k in self.options:
-                dirty |= self.set_option(k, v, first_invocation)
+                dirty |= self.set_option(k, v, first_invocation, meson_version)
             elif k.machine != MachineChoice.BUILD and k.type != OptionType.COMPILER:
                 unknown_options.append(k)
         if unknown_options:
@@ -979,7 +988,8 @@ class CoreData:
 
         return dirty
 
-    def set_default_options(self, default_options: T.MutableMapping[OptionKey, str], subproject: str, env: 'Environment') -> None:
+    def set_default_options(self, default_options: T.MutableMapping[OptionKey, str], subproject: str, env: 'Environment',
+                            project_meson_version: T.Optional[str] = None) -> None:
         # Main project can set default options on subprojects, but subprojects
         # can only set default options on themselves.
         # Preserve order: if env.options has 'buildtype' it must come after
@@ -1015,7 +1025,8 @@ class CoreData:
                 continue
             options[k] = v
 
-        self.set_options(options, subproject=subproject, first_invocation=env.first_invocation)
+        self.set_options(options, subproject=subproject, first_invocation=env.first_invocation,
+                         meson_version=project_meson_version)
 
     def add_compiler_options(self, options: 'MutableKeyedOptionDictType', lang: str, for_machine: MachineChoice,
                              env: 'Environment') -> None:
