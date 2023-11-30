@@ -782,6 +782,7 @@ class CoreData:
                     mlog.deprecation(f'Option {key.name!r} value {v!r} is deprecated')
         elif isinstance(opt.deprecated, dict):
             def replace(v):
+                nonlocal deprecation_msg
                 newvalue = opt.deprecated.get(v)
                 if newvalue is not None:
                     mlog.deprecation(f'Option {key.name!r} value {v!r} is replaced by {newvalue!r}')
