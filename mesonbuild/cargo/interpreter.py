@@ -14,6 +14,7 @@ import dataclasses
 import os
 import collections
 import urllib.parse
+import re
 import typing as T
 
 from . import builder, version, cfg
@@ -131,6 +132,16 @@ class Interpreter:
         return pkg, False
 
     def _dep_package(self, dep: Dependency) -> PackageState:
+        if not dep.meson_version:
+            # The manifest did not specify a version, but we probably have one
+            # from Cargo.lock. See if any of our subprojects matches.
+            for subp_name in self.environment.wrap_resolver.wraps.keys():
+                m = re.fullmatch(rf'{dep.package}-([\d\.]+)-rs', subp_name)
+                if m is not None:
+                    dep.update_version(m[1])
+                    break
+            else:
+                raise MesonException(f'Cannot determine version of cargo package {dep.package}')
         return self.packages[PackageKey(dep.package, dep.api)]
 
     def _load_manifest(self, subdir: str) -> Manifest:

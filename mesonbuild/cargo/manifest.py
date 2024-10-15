@@ -279,6 +279,17 @@ class Dependency:
         raw_dep = _depv_to_dep(raw_depv)
         return cls.from_raw_dict(name, raw_dep, member_path, raw_ws_dep)
 
+    def update_version(self, v: str) -> None:
+        self.version = v
+        try:
+            delattr(self, 'api')
+        except AttributeError:
+            pass
+        try:
+            delattr(self, 'meson_version')
+        except AttributeError:
+            pass
+
 
 @dataclasses.dataclass
 class BuildTarget(T.Generic[_R]):
