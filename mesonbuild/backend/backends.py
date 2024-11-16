@@ -48,6 +48,7 @@ if T.TYPE_CHECKING:
     class TargetIntrospectionData(TypedDict):
 
         language: str
+        machine: str
         compiler: T.List[str]
         parameters: T.List[str]
         sources: T.List[str]
@@ -1978,6 +1979,7 @@ class Backend:
 
             return [{
                 'language': 'unknown',
+                'machine': 'unknown',
                 'compiler': compiler,
                 'parameters': [],
                 'sources': source_list,
