@@ -12,6 +12,7 @@ import typing as T
 from .. import options
 from ..mesonlib import EnvironmentException, MesonException, Popen_safe_logged
 from ..options import OptionKey
+from ..programs import find_external_program
 from .compilers import Compiler, clike_debug_args
 
 if T.TYPE_CHECKING:
@@ -32,6 +33,35 @@ rust_optimization_args: T.Dict[str, T.List[str]] = {
     '3': ['-C', 'opt-level=3'],
     's': ['-C', 'opt-level=s'],
 }
+
+def get_rustup_run_and_args(exelist: T.List[str]) -> T.Optional[T.Tuple[T.List[str], T.List[str]]]:
+    """Given the command for a rustc executable, check if it is invoked via
+       "rustup run" and if so separate the "rustup [OPTIONS] run TOOLCHAIN"
+       part from the arguments to rustc.  If the returned value is not None,
+       other tools (for example clippy-driver or rustdoc) can be run by placing
+       the name of the tool between the two elemnts of the tuple."""
+    e = iter(exelist)
+    try:
+        if os.path.basename(next(e)) != 'rustup':
+            return None
+        # minimum three strings: "rustup run TOOLCHAIN"
+        n = 3
+        opt = next(e)
+
+        # options come first
+        while opt.startswith('-'):
+            n += 1
+            opt = next(e)
+
+        # then "run TOOLCHAIN"
+        if opt != 'run':
+            return None
+
+        next(e)
+        next(e)
+        return exelist[:n], list(e)
+    except StopIteration:
+        return None
 
 class RustCompiler(Compiler):
 
@@ -65,6 +95,7 @@ class RustCompiler(Compiler):
         super().__init__([], exelist, version, for_machine, info,
                          is_cross=is_cross, full_version=full_version,
                          linker=linker)
+        self.rustup_run_and_args: T.Optional[T.Tuple[T.List[str], T.List[str]]] = get_rustup_run_and_args(exelist)
         self.base_options.update({OptionKey(o) for o in ['b_colorout', 'b_ndebug']})
         if 'link' in self.linker.id:
             self.base_options.add(OptionKey('b_vscrt'))
@@ -244,6 +275,25 @@ class RustCompiler(Compiler):
     def get_assert_args(self, disable: bool, env: 'Environment') -> T.List[str]:
         action = "no" if disable else "yes"
         return ['-C', f'debug-assertions={action}', '-C', 'overflow-checks=no']
+
+    def get_rust_tool(self, name: str, env: 'Environment') -> T.List[str]:
+        if self.rustup_run_and_args:
+            rustup_exelist, args = self.rustup_run_and_args
+            # do not use extend so that exelist is copied
+            exelist = rustup_exelist + [name]
+        else:
+            for prog in find_external_program(env, self.for_machine, name, name,
+                                              [name], allow_default_for_cross=False):
+                exelist = [prog.path]
+                args = self.exelist[1:]
+                break
+            else:
+                return []
+
+        tool = exelist[0]
+        if os.path.isfile(tool) and os.access(tool, os.X_OK):
+            return exelist + args
+        return []
 
 
 class ClippyRustCompiler(RustCompiler):
