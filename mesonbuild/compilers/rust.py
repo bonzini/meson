@@ -170,7 +170,10 @@ class RustCompiler(Compiler):
         self.native_static_libs = [i for i in match.group(1).split() if i not in exclude]
 
     def get_dependency_gen_args(self, outtarget: str, outfile: str) -> T.List[str]:
-        return ['--dep-info', outfile]
+        return ['--emit', f'dep-info={outfile}']
+
+    def get_output_args(self, outputname: str) -> T.List[str]:
+        return ['--emit', f'link={outputname}']
 
     def get_sysroot(self) -> str:
         cmd = self.get_exelist(ccache=False) + ['--print', 'sysroot']
@@ -189,6 +192,23 @@ class RustCompiler(Compiler):
     def get_optimization_args(self, optimization_level: str) -> T.List[str]:
         return rust_optimization_args[optimization_level]
 
+    def build_rpath_args(self, env: 'Environment', build_dir: str, from_dir: str,
+                         rpath_paths: T.Tuple[str, ...], build_rpath: str,
+                         install_rpath: str) -> T.Tuple[T.List[str], T.Set[bytes]]:
+        rpath_args, rpath_dirs_to_remove = super().build_rpath_args(
+            env, build_dir, from_dir, rpath_paths, build_rpath, install_rpath)
+
+        # ... but then add rustc's sysroot to account for rustup
+        # installations
+        rustc_rpath_args = []
+        for rpath_arg in rpath_args:
+            rustc_rpath_args.append('-C')
+            rustc_rpath_args.append('link-arg=' + rpath_arg + ':' + os.path.join(self.get_sysroot(), 'lib'))
+        return rustc_rpath_args, rpath_dirs_to_remove
+
+    def real_cratetype(self, crate_type: str) -> bool:
+        return crate_type
+
     def compute_parameters_with_absolute_paths(self, parameter_list: T.List[str],
                                                build_dir: str) -> T.List[str]:
         for idx, i in enumerate(parameter_list):
@@ -200,9 +220,6 @@ class RustCompiler(Compiler):
                         break
 
         return parameter_list
-
-    def get_output_args(self, outputname: str) -> T.List[str]:
-        return ['-o', outputname]
 
     @classmethod
     def use_linker_args(cls, linker: str, version: str) -> T.List[str]:
@@ -249,6 +266,8 @@ class RustCompiler(Compiler):
 
     def get_linker_always_args(self) -> T.List[str]:
         args: T.List[str] = []
+        # Rust is super annoying, calling -C link-arg foo does not work, it has
+        # to be -C link-arg=foo
         for a in super().get_linker_always_args():
             args.extend(['-C', f'link-arg={a}'])
         return args
@@ -295,6 +314,14 @@ class RustCompiler(Compiler):
             return exelist + args if keep_args else exelist
         return []
 
+    @functools.lru_cache(maxsize=None)
+    def get_rustdoc(self, env: 'Environment') -> T.Optional[RustdocTestCompiler]:
+        exelist = self.get_rust_tool('rustdoc', env)
+        if not exelist:
+            return None
+
+        return RustdocTestCompiler(exelist, self.version, self.for_machine,
+                                   self.is_cross, self.info, linker=self.linker)
 
 class ClippyRustCompiler(RustCompiler):
 
@@ -304,3 +331,33 @@ class ClippyRustCompiler(RustCompiler):
     """
 
     id = 'clippy-driver rustc'
+
+
+class RustdocTestCompiler(RustCompiler):
+
+    """We invoke Rustdoc to run doctests.  Some of the flags
+       are different from rustc and some (e.g. --emit link) are
+       ignored."""
+
+    id = 'rustdoc --test'
+
+    def real_cratetype(self, crate_type: str) -> bool:
+        return 'bin'
+
+    def get_always_args(self) -> T.List[str]:
+        return ['--test']
+
+    def get_debug_args(self, is_debug: bool) -> T.List[str]:
+        return []
+
+    def get_dependency_gen_args(self, outtarget: str, outfile: str) -> T.List[str]:
+        return []
+
+    def get_output_args(self, outputname: str) -> T.List[str]:
+        return []
+
+    def get_exe(self) -> str:
+        return self.exelist[0]
+
+    def get_rustc_args(self) -> T.List[str]:
+        return self.exelist[1:]

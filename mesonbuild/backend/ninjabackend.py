@@ -26,6 +26,7 @@ from .. import mlog
 from .. import compilers
 from ..arglist import CompilerArgs
 from ..compilers import Compiler
+from ..compilers.rust import RustCompiler
 from ..linkers import ArLikeLinker, RSPFileSyntax
 from ..mesonlib import (
     File, LibType, MachineChoice, MesonBugException, MesonException, OrderedSet, PerMachine,
@@ -1916,25 +1917,12 @@ class NinjaBackend(backends.Backend):
         # in Rust
         return target.rust_dependency_map.get(dependency.name, dependency.name).replace('-', '_')
 
-    def generate_rust_target(self, target: build.BuildTarget) -> None:
-        rustc = target.compilers['rust']
+    def generate_rust_sources(self, target: build.BuildTarget) -> T.Tuple[T.List[str], str]:
+        orderdeps: T.List[str] = []
+
         # Rust compiler takes only the main file as input and
         # figures out what other files are needed via import
         # statements and magic.
-        base_proxy = target.get_options()
-        args = rustc.compiler_args()
-        # Compiler args for compiling this target
-        args += compilers.get_base_compile_args(base_proxy, rustc, self.environment)
-        self.generate_generator_list_rules(target)
-
-        # dependencies need to cause a relink, they're not just for ordering
-        deps: T.List[str] = []
-
-        # Dependencies for rust-project.json
-        project_deps: T.List[RustDep] = []
-
-        orderdeps: T.List[str] = []
-
         main_rust_file = None
         if target.structured_sources:
             if target.structured_sources.needs_copy():
@@ -1962,14 +1950,10 @@ class NinjaBackend(backends.Backend):
                                           for s in f.get_outputs()])
 
         for i in target.get_sources():
-            if not rustc.can_compile(i):
-                raise InvalidArguments(f'Rust target {target.get_basename()} contains a non-rust source file.')
             if main_rust_file is None:
                 main_rust_file = i.rel_to_builddir(self.build_to_src)
         for g in target.get_generated_sources():
             for i in g.get_outputs():
-                if not rustc.can_compile(i):
-                    raise InvalidArguments(f'Rust target {target.get_basename()} contains a non-rust source file.')
                 if isinstance(g, GeneratedList):
                     fname = os.path.join(self.get_target_private_dir(target), i)
                 else:
@@ -1977,32 +1961,45 @@ class NinjaBackend(backends.Backend):
                 if main_rust_file is None:
                     main_rust_file = fname
                 orderdeps.append(fname)
-        if main_rust_file is None:
-            raise RuntimeError('A Rust target has no Rust sources. This is weird. Also a bug. Please report')
-        target_name = os.path.join(target.subdir, target.get_filename())
-        cratetype = target.rust_crate_type
-        args.extend(['--crate-type', cratetype])
+
+        return orderdeps, main_rust_file
+
+    def get_rust_compiler_args(self, target: build.BuildTarget, rustc: RustCompiler, depfile: T.Optional[str] = None) -> T.List[str]:
+        base_proxy = target.get_options()
+        # Compiler args for compiling this target
+        args = compilers.get_base_compile_args(base_proxy, rustc, self.environment)
+
+        target_name = self.get_target_filename(target)
+        cratetype = rustc.real_cratetype(target.rust_crate_type)
+        args.extend(['--crate-type', target.rust_crate_type])
 
         # If we're dynamically linking, add those arguments
-        #
-        # Rust is super annoying, calling -C link-arg foo does not work, it has
-        # to be -C link-arg=foo
         if cratetype in {'bin', 'dylib'}:
             args.extend(rustc.get_linker_always_args())
 
         args += self.generate_basic_compiler_args(target, rustc)
         # Rustc replaces - with _. spaces or dots are not allowed, so we replace them with underscores
         args += ['--crate-name', target.name.replace('-', '_').replace(' ', '_').replace('.', '_')]
-        depfile = os.path.join(target.subdir, target.name + '.d')
-        args += ['--emit', f'dep-info={depfile}', '--emit', f'link={target_name}']
+        if depfile:
+            args += rustc.get_dependency_gen_args(target_name, depfile)
+        args += rustc.get_output_args(target_name)
         args += ['--out-dir', self.get_target_private_dir(target)]
         args += ['-C', 'metadata=' + target.get_id()]
         args += target.get_extra_args('rust')
+        return args
+
+    def get_rust_compiler_deps_and_args(self, target: build.BuildTarget, rustc: RustCompiler) -> T.Tuple[T.List[str], T.List[RustDep], T.List[str]]:
+        deps: T.List[str] = []
+        project_deps: T.List[RustDep] = []
+        args: T.List[str] = []
+
+        cratetype = rustc.real_cratetype(target.rust_crate_type)
 
         # Rustc always use non-debug Windows runtime. Inject the one selected
         # by Meson options instead.
         # https://github.com/rust-lang/rust/issues/39016
-        if not isinstance(target, build.StaticLibrary):
+        static = cratetype in {'staticlib', 'rlib'}
+        if not static:
             try:
                 buildtype = target.get_option(OptionKey('buildtype'))
                 crt = target.get_option(OptionKey('b_vscrt'))
@@ -2042,7 +2039,7 @@ class NinjaBackend(backends.Backend):
                 # dependency, so that collisions with libraries in rustc's
                 # sysroot don't cause ambiguity
                 d_name = self._get_rust_dependency_name(target, d)
-                args += ['--extern', '{}={}'.format(d_name, os.path.join(d.subdir, d.filename))]
+                args += ['--extern', '{}={}'.format(d_name, self.get_target_filename(d))]
                 project_deps.append(RustDep(d_name, self.rust_crates[d.name].order))
                 continue
 
@@ -2060,8 +2057,7 @@ class NinjaBackend(backends.Backend):
             # "-l" argument and does not rely on platform specific dynamic linker.
             lib = self.get_target_filename_for_linking(d)
             link_whole = d in target.link_whole_targets
-            if isinstance(target, build.StaticLibrary) or (isinstance(target, build.Executable) and rustc.get_crt_static()):
-                static = isinstance(d, build.StaticLibrary)
+            if static or (cratetype == 'bin' and rustc.get_crt_static()):
                 libname = os.path.basename(lib) if verbatim else d.name
                 _link_library(libname, static, bundle=link_whole)
             elif link_whole:
@@ -2077,7 +2073,7 @@ class NinjaBackend(backends.Backend):
                     pass
                 elif a.startswith('-L'):
                     args.append(a)
-                elif a.endswith(('.dll', '.so', '.dylib', '.a', '.lib')) and isinstance(target, build.StaticLibrary):
+                elif a.endswith(('.dll', '.so', '.dylib', '.a', '.lib')) and static:
                     dir_, lib = os.path.split(a)
                     linkdirs.add(dir_)
                     if not verbatim:
@@ -2108,38 +2104,44 @@ class NinjaBackend(backends.Backend):
             # otherwise we'll end up with multiple implementations of libstd.
             args += ['-C', 'prefer-dynamic']
 
-        if isinstance(target, build.SharedLibrary) or has_shared_deps:
-            # build the usual rpath arguments as well...
+        if cratetype in {'cdylib', 'dylib', 'proc-macro'} or has_shared_deps:
+            args += self.get_build_rpath_args(target, rustc)
 
-            # Set runtime-paths so we can run executables without needing to set
-            # LD_LIBRARY_PATH, etc in the environment. Doesn't work on Windows.
-            if has_path_sep(target.name):
-                # Target names really should not have slashes in them, but
-                # unfortunately we did not check for that and some downstream projects
-                # now have them. Once slashes are forbidden, remove this bit.
-                target_slashname_workaround_dir = os.path.join(os.path.dirname(target.name),
-                                                               self.get_target_dir(target))
-            else:
-                target_slashname_workaround_dir = self.get_target_dir(target)
-            rpath_args, target.rpath_dirs_to_remove = (
-                rustc.build_rpath_args(self.environment,
-                                       self.environment.get_build_dir(),
-                                       target_slashname_workaround_dir,
-                                       self.determine_rpath_dirs(target),
-                                       target.build_rpath,
-                                       target.install_rpath))
-            # ... but then add rustc's sysroot to account for rustup
-            # installations
-            for rpath_arg in rpath_args:
-                args += ['-C', 'link-arg=' + rpath_arg + ':' + os.path.join(rustc.get_sysroot(), 'lib')]
+        return deps, project_deps, args
+
+    def generate_rust_target(self, target: build.BuildTarget) -> None:
+        rustc = target.compilers['rust']
+        assert isinstance(rustc, RustCompiler)
+        self.generate_generator_list_rules(target)
+
+        for i in target.get_sources():
+            if not rustc.can_compile(i):
+                raise InvalidArguments(f'Rust target {target.get_basename()} contains a non-rust source file.')
+        for g in target.get_generated_sources():
+            for i in g.get_outputs():
+                if not rustc.can_compile(i):
+                    raise InvalidArguments(f'Rust target {target.get_basename()} contains a non-rust source file.')
+
+        orderdeps, main_rust_file = self.generate_rust_sources(target)
+        target_name = self.get_target_filename(target)
+        if main_rust_file is None:
+            raise RuntimeError('A Rust target has no Rust sources. This is weird. Also a bug. Please report')
+
+        depfile = os.path.join(target.subdir, target.name + '.d')
+
+        args = rustc.compiler_args()
+        args += self.get_rust_compiler_args(target, rustc, depfile)
+
+        deps, project_deps, deps_args = self.get_rust_compiler_deps_and_args(target, rustc)
+        args += deps_args
 
         proc_macro_dylib_path = None
-        if getattr(target, 'rust_crate_type', '') == 'proc-macro':
-            proc_macro_dylib_path = os.path.abspath(os.path.join(target.subdir, target.get_filename()))
+        if target.rust_crate_type == 'proc-macro':
+            proc_macro_dylib_path = self.get_target_filename_abs(target)
 
         self._add_rust_project_entry(target.name,
                                      os.path.abspath(os.path.join(self.environment.build_dir, main_rust_file)),
-                                     args, cratetype, target_name,
+                                     args, target.rust_crate_type, target_name,
                                      bool(target.subproject),
                                      proc_macro_dylib_path,
                                      project_deps)
@@ -2149,14 +2151,22 @@ class NinjaBackend(backends.Backend):
         if orderdeps:
             element.add_orderdep(orderdeps)
         if deps:
+            # dependencies need to cause a relink, they're not just for ordering
             element.add_dep(deps)
         element.add_item('ARGS', args)
         element.add_item('targetdep', depfile)
-        element.add_item('cratetype', cratetype)
         self.add_build(element)
         if isinstance(target, build.SharedLibrary):
             self.generate_shsym(target)
         self.create_target_source_introspection(target, rustc, args, [main_rust_file], [])
+
+        if target.doctests:
+            rustdoc = rustc.get_rustdoc(self.environment)
+            args = rustdoc.get_rustc_args()
+            args += self.get_rust_compiler_args(target.doctests.target, rustdoc)
+            _, _, deps_args = self.get_rust_compiler_deps_and_args(target.doctests.target, rustdoc)
+            args += deps_args
+            target.doctests.cmd_args[0:0] = args.to_native() + [main_rust_file]
 
     @staticmethod
     def get_rule_suffix(for_machine: MachineChoice) -> str:
@@ -3422,6 +3432,25 @@ https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47485'''))
         self.add_build(elem)
         return [prelink_name]
 
+    def get_build_rpath_args(self, target: build.BuildTarget, linker: T.Union[Compiler, StaticLinker]) -> T.List[str]:
+        if has_path_sep(target.name):
+            # Target names really should not have slashes in them, but
+            # unfortunately we did not check for that and some downstream projects
+            # now have them. Once slashes are forbidden, remove this bit.
+            target_slashname_workaround_dir = os.path.join(
+                os.path.dirname(target.name),
+                self.get_target_dir(target))
+        else:
+            target_slashname_workaround_dir = self.get_target_dir(target)
+        (rpath_args, target.rpath_dirs_to_remove) = (
+            linker.build_rpath_args(self.environment,
+                                    self.environment.get_build_dir(),
+                                    target_slashname_workaround_dir,
+                                    self.determine_rpath_dirs(target),
+                                    target.build_rpath,
+                                    target.install_rpath))
+        return rpath_args
+
     def generate_link(self, target: build.BuildTarget, outname, obj_list, linker: T.Union['Compiler', 'StaticLinker'], extra_args=None, stdlib_args=None):
         extra_args = extra_args if extra_args is not None else []
         stdlib_args = stdlib_args if stdlib_args is not None else []
@@ -3487,23 +3516,7 @@ https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47485'''))
 
         # Set runtime-paths so we can run executables without needing to set
         # LD_LIBRARY_PATH, etc in the environment. Doesn't work on Windows.
-        if has_path_sep(target.name):
-            # Target names really should not have slashes in them, but
-            # unfortunately we did not check for that and some downstream projects
-            # now have them. Once slashes are forbidden, remove this bit.
-            target_slashname_workaround_dir = os.path.join(
-                os.path.dirname(target.name),
-                self.get_target_dir(target))
-        else:
-            target_slashname_workaround_dir = self.get_target_dir(target)
-        (rpath_args, target.rpath_dirs_to_remove) = (
-            linker.build_rpath_args(self.environment,
-                                    self.environment.get_build_dir(),
-                                    target_slashname_workaround_dir,
-                                    self.determine_rpath_dirs(target),
-                                    target.build_rpath,
-                                    target.install_rpath))
-        commands += rpath_args
+        commands += self.get_build_rpath_args(target, linker)
 
         # Add link args to link to all internal libraries (link_with:) and
         # internal dependencies needed by this target.

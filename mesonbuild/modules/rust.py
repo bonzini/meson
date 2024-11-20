@@ -18,7 +18,8 @@ from ..interpreter.type_checking import (
     INCLUDE_DIRECTORIES, SOURCES_VARARGS, NoneType, in_set_validator
 )
 from ..interpreterbase import ContainerTypeInfo, InterpreterException, KwargInfo, typed_kwargs, typed_pos_args, noPosargs, permittedKwargs
-from ..mesonlib import File
+from ..interpreter.interpreterobjects import Doctest
+from ..mesonlib import File, PerMachine, join_args
 from ..programs import ExternalProgram
 
 if T.TYPE_CHECKING:
@@ -58,32 +59,19 @@ class RustModule(ExtensionModule):
     """A module that holds helper functions for rust."""
 
     INFO = ModuleInfo('rust', '0.57.0', stabilized='1.0.0')
+    rustdoc: PerMachine[T.Optional[ExternalProgram]] = PerMachine(None, None)
 
     def __init__(self, interpreter: Interpreter) -> None:
         super().__init__(interpreter)
         self._bindgen_bin: T.Optional[T.Union[ExternalProgram, Executable, OverrideProgram]] = None
         self.methods.update({
             'test': self.test,
+            'doctest': self.doctest,
             'bindgen': self.bindgen,
             'proc_macro': self.proc_macro,
         })
 
-    @typed_pos_args('rust.test', str, BuildTarget)
-    @typed_kwargs(
-        'rust.test',
-        *TEST_KWS,
-        DEPENDENCIES_KW,
-        LINK_WITH_KW.evolve(since='1.2.0'),
-        KwargInfo(
-            'rust_args',
-            ContainerTypeInfo(list, str),
-            listify=True,
-            default=[],
-            since='1.2.0',
-        ),
-        KwargInfo('is_parallel', bool, default=False),
-    )
-    def test(self, state: ModuleState, args: T.Tuple[str, BuildTarget], kwargs: FuncTest) -> ModuleReturnValue:
+    def test_common(self, state: ModuleState, args: T.Tuple[str, BuildTarget], kwargs: FuncTest) -> T.Tuple[Executable, FuncTest]:
         """Generate a rust test target from a given rust target.
 
         Rust puts its unitests inside its main source files, unlike most
@@ -179,11 +167,77 @@ class RustModule(ExtensionModule):
             base_target.objects, base_target.environment, base_target.compilers,
             new_target_kwargs
         )
+        return new_target, tkwargs
 
+    @typed_pos_args('rust.test', str, BuildTarget)
+    @typed_kwargs(
+        'rust.test',
+        *TEST_KWS,
+        DEPENDENCIES_KW,
+        LINK_WITH_KW.evolve(since='1.2.0'),
+        KwargInfo(
+            'rust_args',
+            ContainerTypeInfo(list, str),
+            listify=True,
+            default=[],
+            since='1.2.0',
+        ),
+        KwargInfo('is_parallel', bool, default=False),
+    )
+    def test(self, state: ModuleState, args: T.Tuple[str, BuildTarget], kwargs: FuncTest) -> ModuleReturnValue:
+        name, _ = args
+        new_target, tkwargs = self.test_common(state, args, kwargs)
         test = self.interpreter.make_test(
             self.interpreter.current_node, (name, new_target), tkwargs)
 
         return ModuleReturnValue(None, [new_target, test])
+
+    @typed_pos_args('rust.doctest', str, BuildTarget)
+    @typed_kwargs(
+        'rust.doctest',
+        *TEST_KWS,
+        DEPENDENCIES_KW,
+        LINK_WITH_KW,
+        KwargInfo(
+            'rust_args',
+            ContainerTypeInfo(list, str),
+            listify=True,
+            default=[],
+        ),
+        KwargInfo('is_parallel', bool, default=False),
+    )
+    def doctest(self, state: ModuleState, args: T.Tuple[str, BuildTarget], kwargs: FuncTest) -> ModuleReturnValue:
+        name, base_target = args
+
+        # Link the base target's crate into the tests
+        kwargs['link_with'].append(base_target)
+        kwargs['depends'].append(base_target)
+        workdir = kwargs['workdir']
+        kwargs['workdir'] = None
+
+        new_target, tkwargs = self.test_common(state, args, kwargs)
+        tkwargs['args'] = ['--test-args=' + join_args(tkwargs['args'])]
+        if workdir:
+            kwargs['args'] = ['--test-run-directory', kwargs['workdir']] + kwargs['args']
+
+        if self.rustdoc[base_target.for_machine] is None:
+            rustdoc = base_target.compilers['rust'].get_rustdoc(state.environment)
+            if rustdoc:
+                self.rustdoc[base_target.for_machine] = ExternalProgram(rustdoc.get_exe())
+            else:
+                self.rustdoc[base_target.for_machine] = NonExistingExternalProgram()
+
+        if not self.rustdoc[base_target.for_machine].found():
+            raise MesonException('could not find rustdoc for {base_target.for_machine} machine')
+
+        doctests = self.interpreter.make_test(
+            self.interpreter.current_node, (name, self.rustdoc[base_target.for_machine]), tkwargs, Doctest)
+
+        # Note that the new_target is intentionally not returned, as it
+        # is internal to the backend
+        doctests.target = new_target
+        base_target.doctests = doctests
+        return ModuleReturnValue(None, [doctests])
 
     @noPosargs
     @typed_kwargs(
