@@ -1918,6 +1918,7 @@ class NinjaBackend(backends.Backend):
 
     def generate_rust_target(self, target: build.BuildTarget) -> None:
         rustc = target.compilers['rust']
+
         # Rust compiler takes only the main file as input and
         # figures out what other files are needed via import
         # statements and magic.
@@ -1994,8 +1995,8 @@ class NinjaBackend(backends.Backend):
         # Rustc replaces - with _. spaces or dots are not allowed, so we replace them with underscores
         args += ['--crate-name', target.name.replace('-', '_').replace(' ', '_').replace('.', '_')]
         depfile = os.path.join(self.get_target_private_dir(target), target.name + '.d')
-        args += ['--emit', f'dep-info={depfile}', '--emit', f'link={target_name}']
-        args += ['--out-dir', self.get_target_private_dir(target)]
+        args += rustc.get_dependency_gen_args(target_name, depfile)
+        args += rustc.get_output_args(target_name)
         args += ['-C', 'metadata=' + target.get_id()]
         args += target.get_extra_args('rust')
 
