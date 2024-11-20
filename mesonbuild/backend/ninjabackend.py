@@ -26,6 +26,7 @@ from .. import mlog
 from .. import compilers
 from ..arglist import CompilerArgs
 from ..compilers import Compiler
+from ..compilers.rust import RustCompiler
 from ..linkers import ArLikeLinker, RSPFileSyntax
 from ..mesonlib import (
     File, LibType, MachineChoice, MesonBugException, MesonException, OrderedSet, PerMachine,
@@ -1918,6 +1919,8 @@ class NinjaBackend(backends.Backend):
 
     def generate_rust_target(self, target: build.BuildTarget) -> None:
         rustc = target.compilers['rust']
+        assert isinstance(rustc, RustCompiler)
+
         # Rust compiler takes only the main file as input and
         # figures out what other files are needed via import
         # statements and magic.
@@ -1980,8 +1983,8 @@ class NinjaBackend(backends.Backend):
         if main_rust_file is None:
             raise RuntimeError('A Rust target has no Rust sources. This is weird. Also a bug. Please report')
         target_name = self.get_target_filename(target)
-        cratetype = target.rust_crate_type
-        args.extend(['--crate-type', cratetype])
+        cratetype = rustc.real_cratetype(target.rust_crate_type)
+        args.extend(['--crate-type', target.rust_crate_type])
 
         # If we're dynamically linking, add those arguments
         #
@@ -1994,7 +1997,8 @@ class NinjaBackend(backends.Backend):
         # Rustc replaces - with _. spaces or dots are not allowed, so we replace them with underscores
         args += ['--crate-name', target.name.replace('-', '_').replace(' ', '_').replace('.', '_')]
         depfile = os.path.join(target.subdir, target.name + '.d')
-        args += ['--emit', f'dep-info={depfile}', '--emit', f'link={target_name}']
+        args += rustc.get_dependency_gen_args(target_name, depfile)
+        args += rustc.get_output_args(target_name)
         args += ['--out-dir', self.get_target_private_dir(target)]
         args += ['-C', 'metadata=' + target.get_id()]
         args += target.get_extra_args('rust')
@@ -2002,7 +2006,8 @@ class NinjaBackend(backends.Backend):
         # Rustc always use non-debug Windows runtime. Inject the one selected
         # by Meson options instead.
         # https://github.com/rust-lang/rust/issues/39016
-        if not isinstance(target, build.StaticLibrary):
+        static = cratetype in {'staticlib', 'rlib'}
+        if not static:
             try:
                 buildtype = target.get_option(OptionKey('buildtype'))
                 crt = target.get_option(OptionKey('b_vscrt'))
@@ -2060,8 +2065,7 @@ class NinjaBackend(backends.Backend):
             # "-l" argument and does not rely on platform specific dynamic linker.
             lib = self.get_target_filename_for_linking(d)
             link_whole = d in target.link_whole_targets
-            if isinstance(target, build.StaticLibrary) or (isinstance(target, build.Executable) and rustc.get_crt_static()):
-                static = isinstance(d, build.StaticLibrary)
+            if static or (cratetype == 'bin' and rustc.get_crt_static()):
                 libname = os.path.basename(lib) if verbatim else d.name
                 _link_library(libname, static, bundle=link_whole)
             elif link_whole:
@@ -2077,7 +2081,7 @@ class NinjaBackend(backends.Backend):
                     pass
                 elif a.startswith('-L'):
                     args.append(a)
-                elif a.endswith(('.dll', '.so', '.dylib', '.a', '.lib')) and isinstance(target, build.StaticLibrary):
+                elif a.endswith(('.dll', '.so', '.dylib', '.a', '.lib')) and static:
                     dir_, lib = os.path.split(a)
                     linkdirs.add(dir_)
                     if not verbatim:
@@ -2108,7 +2112,7 @@ class NinjaBackend(backends.Backend):
             # otherwise we'll end up with multiple implementations of libstd.
             args += ['-C', 'prefer-dynamic']
 
-        if isinstance(target, build.SharedLibrary) or has_shared_deps:
+        if cratetype in {'cdylib', 'dylib', 'proc-macro'} or has_shared_deps:
             args += self.get_build_rpath_args(target, rustc)
 
         proc_macro_dylib_path = None
