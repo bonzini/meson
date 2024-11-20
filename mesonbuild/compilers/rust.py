@@ -314,6 +314,14 @@ class RustCompiler(Compiler):
             return exelist + args
         return []
 
+    @functools.lru_cache(maxsize=None)
+    def get_rustdoc(self, env: 'Environment') -> T.Optional[RustdocTestCompiler]:
+        exelist = self.get_rust_tool('rustdoc', env)
+        if not exelist:
+            return None
+
+        return RustdocTestCompiler(exelist, self.version, self.for_machine,
+                                   self.is_cross, self.info, linker=self.linker)
 
 class ClippyRustCompiler(RustCompiler):
 
@@ -347,3 +355,6 @@ class RustdocTestCompiler(RustCompiler):
 
     def get_output_args(self, outputname: str) -> T.List[str]:
         return []
+
+    def get_rustc_args(self) -> T.List[str]:
+        return self.exelist[1:]

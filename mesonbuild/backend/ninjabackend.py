@@ -2160,6 +2160,14 @@ class NinjaBackend(backends.Backend):
             self.generate_shsym(target)
         self.create_target_source_introspection(target, rustc, args, [main_rust_file], [])
 
+        if target.doctests:
+            rustdoc = rustc.get_rustdoc(self.environment)
+            args = rustdoc.get_rustc_args()
+            args += self.get_rust_compiler_args(target.doctests.target, rustdoc)
+            _, _, deps_args = self.get_rust_compiler_deps_and_args(target.doctests.target, rustdoc)
+            args += deps_args
+            target.doctests.cmd_args[0:0] = args.to_native() + [main_rust_file]
+
     @staticmethod
     def get_rule_suffix(for_machine: MachineChoice) -> str:
         return PerMachine('_FOR_BUILD', '')[for_machine]
