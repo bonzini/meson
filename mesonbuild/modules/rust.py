@@ -68,22 +68,7 @@ class RustModule(ExtensionModule):
             'proc_macro': self.proc_macro,
         })
 
-    @typed_pos_args('rust.test', str, BuildTarget)
-    @typed_kwargs(
-        'rust.test',
-        *TEST_KWS,
-        DEPENDENCIES_KW,
-        LINK_WITH_KW.evolve(since='1.2.0'),
-        KwargInfo(
-            'rust_args',
-            ContainerTypeInfo(list, str),
-            listify=True,
-            default=[],
-            since='1.2.0',
-        ),
-        KwargInfo('is_parallel', bool, default=False),
-    )
-    def test(self, state: ModuleState, args: T.Tuple[str, BuildTarget], kwargs: FuncTest) -> ModuleReturnValue:
+    def test_common(self, state: ModuleState, args: T.Tuple[str, BuildTarget], kwargs: FuncTest) -> T.Tuple[Executable, FuncTest]:
         """Generate a rust test target from a given rust target.
 
         Rust puts its unitests inside its main source files, unlike most
@@ -179,7 +164,26 @@ class RustModule(ExtensionModule):
             base_target.objects, base_target.environment, base_target.compilers,
             new_target_kwargs
         )
+        return new_target, tkwargs
 
+    @typed_pos_args('rust.test', str, BuildTarget)
+    @typed_kwargs(
+        'rust.test',
+        *TEST_KWS,
+        DEPENDENCIES_KW,
+        LINK_WITH_KW.evolve(since='1.2.0'),
+        KwargInfo(
+            'rust_args',
+            ContainerTypeInfo(list, str),
+            listify=True,
+            default=[],
+            since='1.2.0',
+        ),
+        KwargInfo('is_parallel', bool, default=False),
+    )
+    def test(self, state: ModuleState, args: T.Tuple[str, BuildTarget], kwargs: FuncTest) -> ModuleReturnValue:
+        name, _ = args
+        new_target, tkwargs = self.test_common(state, args, kwargs)
         test = self.interpreter.make_test(
             self.interpreter.current_node, (name, new_target), tkwargs)
 
