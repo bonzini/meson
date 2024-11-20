@@ -304,19 +304,18 @@ class RustCompiler(Compiler):
             # do not use extend so that exelist is copied
             exelist = rustup_exelist + [name]
         else:
-            from ..programs import find_external_program
-            for prog in find_external_program(env, self.for_machine, name, name,
-                                              [name], allow_default_for_cross=False):
-                exelist = [prog.path]
-                args = self.get_exe_args()
-                break
-            else:
-                return []
+            exelist = [name]
+            args = self.get_exe_args()
 
-        tool = exelist[0]
-        if os.path.isfile(tool) and os.access(tool, os.X_OK):
-            return exelist + args
-        return []
+        from ..programs import find_external_program
+        for prog in find_external_program(env, self.for_machine, exelist[0], exelist[0],
+                                          [exelist[0]], allow_default_for_cross=False):
+            exelist[0] = prog.path
+            break
+        else:
+            return []
+
+        return exelist + args
 
     @functools.lru_cache(maxsize=None)
     def get_rustdoc(self, env: 'Environment') -> T.Optional[RustdocTestCompiler]:
