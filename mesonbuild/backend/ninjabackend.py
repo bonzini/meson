@@ -3652,9 +3652,12 @@ https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47485'''))
         elem.add_item('pool', 'console')
         self.add_build(elem)
 
-    def generate_clangtool(self, name: str, extra_arg: T.Optional[str] = None) -> None:
+    def generate_clangtool(self, name: str, extra_arg: T.Optional[str] = None,
+                           args: T.Optional[T.List[str]] = None) -> None:
         target_name = 'clang-' + name
         extra_args = []
+        if args:
+            extra_args.extend(args)
         if extra_arg:
             target_name += f'-{extra_arg}'
             extra_args.append(f'--{extra_arg}')
@@ -3680,10 +3683,13 @@ https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47485'''))
     def generate_clangtidy(self) -> None:
         if not environment.detect_clangtidy():
             return
-        self.generate_clangtool('tidy')
+        colorout = self.environment.coredata.optstore.get_value('b_colorout') \
+            if OptionKey('b_colorout') in self.environment.coredata.optstore else 'always'
+        args = ['--color', colorout]
+        self.generate_clangtool('tidy', args=args)
         if not environment.detect_clangapply():
             return
-        self.generate_clangtool('tidy', 'fix')
+        self.generate_clangtool('tidy', 'fix', args=args)
 
     def generate_tags(self, tool: str, target_name: str) -> None:
         import shutil
