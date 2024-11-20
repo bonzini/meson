@@ -355,5 +355,8 @@ class RustdocTestCompiler(RustCompiler):
     def get_output_args(self, outputname: str) -> T.List[str]:
         return []
 
+    def get_exe(self) -> str:
+        return self.exelist[0]
+
     def get_rustc_args(self) -> T.List[str]:
         return self.exelist[1:]
