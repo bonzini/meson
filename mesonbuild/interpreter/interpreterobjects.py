@@ -809,6 +809,11 @@ class Test(MesonInterpreterObject):
     def get_name(self) -> str:
         return self.name
 
+
+class Doctest(Test):
+    target: build.BuildTarget
+
+
 class NullSubprojectInterpreter(HoldableObject):
     pass
 
