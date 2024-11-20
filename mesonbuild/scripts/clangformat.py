@@ -35,6 +35,8 @@ def run_clang_format(fname: Path, exelist: T.List[str], check: bool, cformat_ver
 def run(args: T.List[str]) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('--check', action='store_true')
+    # not yet used - check which version introduced the undocumented option --color
+    parser.add_argument('--color', default='always')
     parser.add_argument('sourcedir')
     parser.add_argument('builddir')
     options = parser.parse_args(args)
