@@ -308,7 +308,7 @@ class RustCompiler(Compiler):
             for prog in find_external_program(env, self.for_machine, name, name,
                                               [name], allow_default_for_cross=False):
                 exelist = [prog.path]
-                args = self.exelist[1:]
+                args = self.get_exe_args()
                 break
             else:
                 return []
