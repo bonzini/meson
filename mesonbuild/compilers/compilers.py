@@ -133,11 +133,15 @@ def is_header(fname: 'mesonlib.FileOrString') -> bool:
 def is_source_suffix(suffix: str) -> bool:
     return suffix in source_suffixes
 
+@lru_cache(maxsize=None)
+def cached_is_source_by_name(fname: str) -> bool:
+    suffix = fname.split('.')[-1].lower()
+    return is_source_suffix(suffix)
+
 def is_source(fname: 'mesonlib.FileOrString') -> bool:
     if isinstance(fname, mesonlib.File):
         fname = fname.fname
-    suffix = fname.split('.')[-1].lower()
-    return is_source_suffix(suffix)
+    return cached_is_source_by_name(fname)
 
 def is_assembly(fname: 'mesonlib.FileOrString') -> bool:
     if isinstance(fname, mesonlib.File):
@@ -152,14 +156,14 @@ def is_llvm_ir(fname: 'mesonlib.FileOrString') -> bool:
     return suffix in llvm_ir_suffixes
 
 @lru_cache(maxsize=None)
-def cached_by_name(fname: 'mesonlib.FileOrString') -> bool:
+def cached_is_object_by_name(fname: str) -> bool:
     suffix = fname.split('.')[-1]
     return suffix in obj_suffixes
 
 def is_object(fname: 'mesonlib.FileOrString') -> bool:
     if isinstance(fname, mesonlib.File):
         fname = fname.fname
-    return cached_by_name(fname)
+    return cached_is_object_by_name(fname)
 
 def is_library(fname: 'mesonlib.FileOrString') -> bool:
     if isinstance(fname, mesonlib.File):
@@ -482,6 +486,12 @@ class Compiler(HoldableObject, metaclass=abc.ABCMeta):
 
     def get_modes(self) -> T.List[Compiler]:
         return self.modes
+
+    def get_exe(self) -> str:
+        return self.exelist[0]
+
+    def get_exe_args(self) -> T.List[str]:
+        return self.exelist[1:]
 
     def get_linker_id(self) -> str:
         # There is not guarantee that we have a dynamic linker instance, as
