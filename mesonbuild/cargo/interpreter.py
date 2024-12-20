@@ -753,6 +753,7 @@ class Interpreter:
                 dependencies.append(build.identifier(f'{fixup_meson_varname(name)}_system_dep'))
 
         rust_args: T.List[mparser.BaseNode] = [
+            build.string('--cap-lints'), build.string('allow'),
             build.identifier('features_args'),
             build.identifier(_extra_args_varname()),
             build.identifier('system_deps_args'),
