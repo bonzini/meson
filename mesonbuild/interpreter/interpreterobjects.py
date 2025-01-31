@@ -15,7 +15,7 @@ from .. import mlog
 from ..modules import ModuleReturnValue, ModuleObject, ModuleState, ExtensionModule, NewExtensionModule
 from ..backend.backends import TestProtocol
 from ..interpreterbase import (
-                               ContainerTypeInfo, KwargInfo, MesonOperator,
+                               ContainerTypeInfo, KwargInfo, InterpreterObject, MesonOperator,
                                MesonInterpreterObject, ObjectHolder, MutableInterpreterObject,
                                FeatureNew, FeatureDeprecated,
                                typed_pos_args, typed_kwargs, typed_operator,
@@ -32,7 +32,7 @@ if T.TYPE_CHECKING:
     from . import kwargs
     from ..cmake.interpreter import CMakeInterpreter
     from ..envconfig import MachineInfo
-    from ..interpreterbase import FeatureCheckBase, InterpreterObject, SubProject, TYPE_var, TYPE_kwargs, TYPE_nvar, TYPE_nkwargs
+    from ..interpreterbase import FeatureCheckBase, SubProject, TYPE_var, TYPE_kwargs, TYPE_nvar, TYPE_nkwargs
     from .interpreter import Interpreter
 
     from typing_extensions import TypedDict
@@ -809,6 +809,11 @@ class Test(MesonInterpreterObject):
     def get_name(self) -> str:
         return self.name
 
+
+class Doctest(Test):
+    target: T.Optional[build.BuildTarget] = None
+
+
 class NullSubprojectInterpreter(HoldableObject):
     pass
 
@@ -1054,10 +1059,6 @@ class _CustomTargetHolder(ObjectHolder[_CT]):
                              'to_list': self.to_list_method,
                              })
 
-        self.operators.update({
-            MesonOperator.INDEX: self.op_index,
-        })
-
     def __repr__(self) -> str:
         r = '<{} {}: {}>'
         h = self.held_object
@@ -1079,6 +1080,7 @@ class _CustomTargetHolder(ObjectHolder[_CT]):
 
     @noKwargs
     @typed_operator(MesonOperator.INDEX, int)
+    @InterpreterObject.operator(MesonOperator.INDEX)
     def op_index(self, other: int) -> build.CustomTargetIndex:
         try:
             return self.held_object[other]

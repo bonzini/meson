@@ -116,7 +116,7 @@ def find_external_dependency(name: str, env: 'Environment', kwargs: T.Dict[str, 
             pkgdep.append(d)
         except DependencyException as e:
             assert isinstance(c, functools.partial), 'for mypy'
-            bettermsg = f'Dependency lookup for {name} with method {c.func.log_tried()!r} failed: {e}'
+            bettermsg = f'Dependency lookup for {name} with method {c.func.log_tried()!r} failed: {e}' # type: ignore[attr-defined]
             mlog.debug(bettermsg)
             e.args = (bettermsg,)
             pkg_exc.append(e)
@@ -183,7 +183,7 @@ def _build_external_dependency_list(name: str, env: 'Environment', for_machine: 
         if isinstance(packages[lname], type):
             entry1 = T.cast('T.Type[ExternalDependency]', packages[lname])  # mypy doesn't understand isinstance(..., type)
             if issubclass(entry1, ExternalDependency):
-                func: T.Callable[[], 'ExternalDependency'] = functools.partial(entry1, env, kwargs)
+                func: T.Callable[[], 'ExternalDependency'] = functools.partial(entry1, env, kwargs) # type: ignore[arg-type]
                 dep = [func]
         else:
             entry2 = T.cast('T.Union[DependencyFactory, WrappedFactoryFunc]', packages[lname])

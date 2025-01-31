@@ -305,7 +305,7 @@ class RustCompiler(Compiler):
             exelist = rustup_exelist + [name]
         else:
             exelist = [name]
-            args = self.exelist[1:]
+            args = self.get_exe_args()
 
         from ..programs import find_external_program
         for prog in find_external_program(env, self.for_machine, exelist[0], exelist[0],
@@ -317,6 +317,14 @@ class RustCompiler(Compiler):
 
         return exelist + args
 
+    @functools.lru_cache(maxsize=None)
+    def get_rustdoc(self, env: 'Environment') -> T.Optional[RustdocTestCompiler]:
+        exelist = self.get_rust_tool('rustdoc', env)
+        if not exelist:
+            return None
+
+        return RustdocTestCompiler(exelist, self.version, self.for_machine,
+                                   self.is_cross, self.info, linker=self.linker)
 
 class ClippyRustCompiler(RustCompiler):
 

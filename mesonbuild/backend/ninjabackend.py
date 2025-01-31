@@ -1976,14 +1976,14 @@ class NinjaBackend(backends.Backend):
 
         return orderdeps, main_rust_file
 
-    def get_rust_compiler_args(self, target: build.BuildTarget, rustc: Compiler,
+    def get_rust_compiler_args(self, target: build.BuildTarget, rustc: Compiler, src_crate_type: str,
                                depfile: T.Optional[str] = None) -> T.List[str]:
         base_proxy = target.get_options()
         # Compiler args for compiling this target
         args = compilers.get_base_compile_args(base_proxy, rustc, self.environment)
 
         target_name = self.get_target_filename(target)
-        args.extend(['--crate-type', target.rust_crate_type])
+        args.extend(['--crate-type', src_crate_type])
 
         # If we're dynamically linking, add those arguments
         if target.rust_crate_type in {'bin', 'dylib'}:
@@ -2143,7 +2143,7 @@ class NinjaBackend(backends.Backend):
         args = rustc.compiler_args()
 
         depfile = os.path.join(self.get_target_private_dir(target), target.name + '.d')
-        args += self.get_rust_compiler_args(target, rustc, depfile)
+        args += self.get_rust_compiler_args(target, rustc, target.rust_crate_type, depfile)
 
         deps, fortran_order_deps, project_deps, deps_args = self.get_rust_compiler_deps_and_args(target, rustc)
         args += deps_args
@@ -2174,6 +2174,17 @@ class NinjaBackend(backends.Backend):
         if isinstance(target, build.SharedLibrary):
             self.generate_shsym(target)
         self.create_target_source_introspection(target, rustc, args, [main_rust_file], [])
+
+        if target.doctests:
+            from ..compilers.rust import RustCompiler
+            assert isinstance(rustc, RustCompiler)
+            assert target.doctests.target is not None
+            rustdoc = rustc.get_rustdoc(self.environment)
+            args = rustdoc.get_exe_args()
+            args += self.get_rust_compiler_args(target.doctests.target, rustdoc, target.rust_crate_type)
+            _, _, deps_args = self.get_rust_compiler_deps_and_args(target.doctests.target, rustdoc)
+            args += deps_args
+            target.doctests.cmd_args = args.to_native() + [main_rust_file] + target.doctests.cmd_args
 
     @staticmethod
     def get_rule_suffix(for_machine: MachineChoice) -> str:
@@ -3718,6 +3729,21 @@ https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47485'''))
         elem.add_dep(list(self.all_structured_sources))
         self.add_build(elem)
 
+    def generate_rustdoc(self) -> None:
+        if 'rustdoc' in self.all_outputs or not self.have_language('rust'):
+            return
+
+        cmd = self.environment.get_build_command() + \
+            ['--internal', 'rustdoc', self.environment.build_dir]
+        elem = self.create_phony_target('rustdoc', 'CUSTOM_COMMAND', 'PHONY')
+        elem.add_item('COMMAND', cmd)
+        elem.add_item('pool', 'console')
+        for crate in self.rust_crates.values():
+            if crate.crate_type in {'rlib', 'dylib', 'proc-macro'}:
+                elem.add_dep(crate.target_name)
+        elem.add_dep(list(self.all_structured_sources))
+        self.add_build(elem)
+
     def generate_scanbuild(self) -> None:
         if not environment.detect_scanbuild():
             return
@@ -3786,6 +3812,7 @@ https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47485'''))
         self.generate_clangformat()
         self.generate_clangtidy()
         self.generate_clippy()
+        self.generate_rustdoc()
         self.generate_tags('etags', 'TAGS')
         self.generate_tags('ctags', 'ctags')
         self.generate_tags('cscope', 'cscope')

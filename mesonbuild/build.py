@@ -25,7 +25,7 @@ from .mesonlib import (
     extract_as_list, typeslistify, stringlistify, classify_unity_sources,
     get_filenames_templates_dict, substitute_values, has_path_sep,
     PerMachineDefaultable,
-    MesonBugException, EnvironmentVariables, pickle_load,
+    MesonBugException, EnvironmentVariables, pickle_load, lazy_property,
 )
 from .options import OptionKey
 
@@ -43,7 +43,7 @@ if T.TYPE_CHECKING:
     from .backend.backends import Backend
     from .compilers import Compiler
     from .interpreter.interpreter import SourceOutputs, Interpreter
-    from .interpreter.interpreterobjects import Test
+    from .interpreter.interpreterobjects import Test, Doctest
     from .interpreterbase import SubProject
     from .linkers.linkers import StaticLinker
     from .mesonlib import ExecutableSerialisation, FileMode, FileOrString
@@ -638,12 +638,16 @@ class Target(HoldableObject, metaclass=abc.ABCMeta):
             return subdir_part + '@@' + my_id
         return my_id
 
-    def get_id(self) -> str:
+    @lazy_property
+    def id(self) -> str:
         name = self.name
         if getattr(self, 'name_suffix_set', False):
             name += '.' + self.suffix
         return self.construct_id_from_path(
             self.subdir, name, self.type_suffix())
+
+    def get_id(self) -> str:
+        return self.id
 
     def process_kwargs_base(self, kwargs: T.Dict[str, T.Any]) -> None:
         if 'build_by_default' in kwargs:
@@ -755,6 +759,7 @@ class BuildTarget(Target):
         self.name_prefix_set = False
         self.name_suffix_set = False
         self.filename = 'no_name'
+        self.doctests: T.Optional[Doctest] = None
         # The debugging information file this target will generate
         self.debug_filename = None
         # The list of all files outputted by this target. Useful in cases such
