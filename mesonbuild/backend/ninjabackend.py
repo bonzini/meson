@@ -1186,9 +1186,7 @@ class NinjaBackend(backends.Backend):
                 self.generate_target(t)
 
     def custom_target_generator_inputs(self, target) -> None:
-        for s in target.sources:
-            if isinstance(s, build.GeneratedList):
-                self.generate_genlist_for_target(s, target)
+        self.generate_genlists_for_target(target.sources, target)
 
     def unwrap_dep_list(self, target):
         deps = []
@@ -2702,10 +2700,7 @@ https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47485'''))
         # CustomTargets have already written their rules and
         # CustomTargetIndexes don't actually get generated, so write rules for
         # GeneratedLists here
-        for genlist in target.get_generated_sources():
-            if isinstance(genlist, (build.CustomTarget, build.CustomTargetIndex)):
-                continue
-            self.generate_genlist_for_target(genlist, target)
+        self.generate_genlists_for_target(target.get_generated_sources(), target)
 
     def replace_paths(self, target, args, override_subdir=None):
         if override_subdir:
@@ -2721,10 +2716,15 @@ https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47485'''))
         args = [x.replace('\\', '/') for x in args]
         return args
 
-    def generate_genlist_for_target(self, genlist: build.GeneratedList, target: build.BuildTarget) -> None:
+    def generate_genlist_for_target(self, genlist: build.GeneratedList, target: build.BuildTarget,
+                                    done: T.Set[build.GeneratedList]) -> None:
+        if genlist in done:
+            return
+
+        done.add(genlist)
         for x in genlist.depends:
             if isinstance(x, build.GeneratedList):
-                self.generate_genlist_for_target(x, target)
+                self.generate_genlist_for_target(x, target, done)
         generator = genlist.get_generator()
         subdir = genlist.subdir
         exe = generator.get_exe()
@@ -2780,6 +2780,13 @@ https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47485'''))
                 elem.add_dep(self.get_target_filename(exe))
             elem.add_item('COMMAND', cmdlist)
             self.add_build(elem)
+
+    def generate_genlists_for_target(self, gensrc: T.List[T.Union[build.CustomTarget, build.CustomTargetIndex, build.GeneratedList]],
+                                     target: build.BuildTarget) -> None:
+        done = set()
+        for s in gensrc:
+            if isinstance(s, build.GeneratedList):
+                self.generate_genlist_for_target(s, target, done)
 
     def scan_fortran_module_outputs(self, target) -> None:
         """
