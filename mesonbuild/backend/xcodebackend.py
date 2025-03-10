@@ -679,6 +679,8 @@ class XCodeBackend(backends.Backend):
                 if isinstance(s, build.GeneratedList):
                     build_phases.append(self.shell_targets[(tname, generator_id)])
                     for d in s.depends:
+                        if isinstance(d, build.GeneratedList):
+                            raise MesonException(f'{t.name}: generator outputs as generator inputs are not supported by the Xcode backend')
                         dependencies.append(self.pbx_custom_dep_map[d.get_id()])
                     generator_id += 1
                 elif isinstance(s, build.ExtractedObjects):
