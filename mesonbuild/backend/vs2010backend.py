@@ -153,10 +153,20 @@ class Vs2010Backend(backends.Backend):
     def get_target_private_dir(self, target):
         return os.path.join(self.get_target_dir(target), target.get_id())
 
-    def generate_genlist_for_target(self, genlist: T.Union[build.GeneratedList, build.CustomTarget, build.CustomTargetIndex], target: build.BuildTarget, parent_node: ET.Element, generator_output_files: T.List[str], custom_target_include_dirs: T.List[str], custom_target_output_files: T.List[str]) -> None:
+    def generate_genlist_for_target(self,
+                                    genlist: T.Union[build.GeneratedList, build.CustomTarget, build.CustomTargetIndex],
+                                    target: build.BuildTarget, parent_node: ET.Element,
+                                    generator_output_files: T.List[str],
+                                    custom_target_include_dirs: T.List[str],
+                                    custom_target_output_files: T.List[str],
+                                    done: T.Set[T.Union[build.GeneratedList, build.CustomTarget, build.CustomTargetIndex]]) -> None:
+        if genlist in done:
+            return
+
+        done.add(genlist)
         if isinstance(genlist, build.GeneratedList):
             for x in genlist.depends:
-                self.generate_genlist_for_target(x, target, parent_node, [], [], [])
+                self.generate_genlist_for_target(x, target, parent_node, [], [], [], done)
         target_private_dir = self.relpath(self.get_target_private_dir(target), self.get_target_dir(target))
         down = self.target_to_build_root(target)
         if isinstance(genlist, (build.CustomTarget, build.CustomTargetIndex)):
@@ -216,12 +226,15 @@ class Vs2010Backend(backends.Backend):
                 ET.SubElement(cbs, 'Outputs').text = ';'.join(outfiles)
                 ET.SubElement(cbs, 'AdditionalInputs').text = ';'.join(deps)
 
-    def generate_custom_generator_commands(self, target, parent_node):
+    def generate_custom_generator_commands(self, target: build.BuildTarget, parent_node: ET.Element):
         generator_output_files = []
         custom_target_include_dirs = []
         custom_target_output_files = []
+        done = set()
         for genlist in target.get_generated_sources():
-            self.generate_genlist_for_target(genlist, target, parent_node, generator_output_files, custom_target_include_dirs, custom_target_output_files)
+            self.generate_genlist_for_target(genlist, target, parent_node,
+                                             generator_output_files, custom_target_include_dirs,
+                                             custom_target_output_files, done)
         return generator_output_files, custom_target_output_files, custom_target_include_dirs
 
     def generate(self,
