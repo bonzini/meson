@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os.path
 import typing as T
 
 
@@ -55,14 +56,14 @@ class Target(T.NamedTuple):
 
 
 class DepFile:
-    def __init__(self, lines: T.Iterable[str]):
+    def __init__(self, lines: T.Iterable[str], base: str):
         rules = parse(lines)
         depfile: T.Dict[str, Target] = {}
         for (targets, deps) in rules:
             for target in targets:
                 t = depfile.setdefault(target, Target(deps=set()))
                 for dep in deps:
-                    t.deps.add(dep)
+                    t.deps.add(os.path.join(base, dep))
         self.depfile = depfile
 
     def get_all_dependencies(self, name: str, visited: T.Optional[T.Set[str]] = None) -> T.List[str]:
