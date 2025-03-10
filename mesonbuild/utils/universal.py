@@ -754,9 +754,25 @@ class VcsData:
     get_rev: T.List[str]
     rev_regex: str
     dep: str
+    detect: T.Callable[[str], bool] = os.path.isdir
     wc_dir: T.Optional[str] = None
 
 def detect_vcs(source_dir: T.Union[str, Path]) -> T.Optional[VcsData]:
+    def is_git_dir(path: str) -> bool:
+        if os.path.exists(os.path.join(path, 'HEAD')):
+            return True
+        # slow path for git worktrees
+        if not os.path.exists(path):
+            return False
+        try:
+            pc = subprocess.Popen(['git', 'rev-parse', '--git-dir'],
+                                  stdout=subprocess.PIPE,
+                                  stderr=subprocess.DEVNULL)
+            (stdo, _) = pc.communicate()
+            return pc.returncode == 0
+        except Exception:
+            return False
+
     vcs_systems = [
         VcsData(
             name = 'git',
@@ -765,6 +781,7 @@ def detect_vcs(source_dir: T.Union[str, Path]) -> T.Optional[VcsData]:
             get_rev = ['git', 'describe', '--dirty=+', '--always'],
             rev_regex = '(.*)',
             dep = '.git/logs/HEAD',
+            detect = is_git_dir,
         ),
         VcsData(
             name = 'mercurial',
@@ -802,7 +819,7 @@ def detect_vcs(source_dir: T.Union[str, Path]) -> T.Optional[VcsData]:
         for vcs in vcs_systems:
             repodir = vcs.repo_dir
             cmd = vcs.cmd
-            if curdir.joinpath(repodir).is_dir() and shutil.which(cmd):
+            if vcs.detect(curdir.joinpath(repodir)) and shutil.which(cmd):
                 vcs.wc_dir = str(curdir)
                 return vcs
     return None
