@@ -1083,7 +1083,9 @@ class Interpreter(InterpreterBase, HoldableObject):
         option_object: T.Optional[options.AnyOptionType]
 
         try:
-            optkey = options.OptionKey(optname, self.subproject)
+            optkey = options.OptionKey.from_string(optname).evolve(subproject=self.subproject)
+            if optkey.is_for_build() and not self.coredata.is_cross_build():
+                optkey = optkey.evolve(machine=MachineChoice.HOST)
             option_object, value = self.coredata.optstore.get_option_and_value_for(optkey)
         except KeyError:
             if self.coredata.optstore.is_base_option(optkey):
