@@ -1338,11 +1338,7 @@ class OptionStore:
                     self.set_option(proj_key, valstr, first_invocation)
                 else:
                     self.pending_options[key] = valstr
-        for keystr, valstr in cmd_line_options.items():
-            if isinstance(keystr, str):
-                key = OptionKey.from_string(keystr)
-            else:
-                key = keystr
+        for key, valstr in cmd_line_options.items():
             # Due to backwards compatibility we ignore all build-machine options
             # when building natively.
             if not self.is_cross and key.is_for_build():
@@ -1412,8 +1408,6 @@ class OptionStore:
                 self.augments[key] = valstr
         # Check for pending options
         for key, valstr in cmd_line_options.items(): # type: ignore [assignment]
-            if not isinstance(key, OptionKey):
-                key = OptionKey.from_string(key)
             if key.subproject != subproject:
                 continue
             self.pending_options.pop(key, None)
