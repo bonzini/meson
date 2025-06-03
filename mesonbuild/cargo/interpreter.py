@@ -17,15 +17,15 @@ import urllib.parse
 import itertools
 import typing as T
 
-from . import builder, version, cfg
+from . import builder, raw, version, cfg
 from .toml import load_toml, TomlImplementationMissing
 from .manifest import Manifest, CargoLock, fixup_meson_varname
+from .validate import validator
 from ..mesonlib import MesonException, MachineChoice
 from .. import coredata, mlog
 from ..wrap.wrap import PackageDefinition
 
 if T.TYPE_CHECKING:
-    from . import raw
     from .. import mparser
     from .manifest import Dependency, SystemDependency
     from ..environment import Environment
@@ -138,6 +138,8 @@ class Interpreter:
             filename = os.path.join(path, 'Cargo.toml')
             toml = load_toml(filename)
             if 'package' in toml:
+                if not validator(raw.Manifest)(toml):
+                    raise MesonException(f'invalid {subdir}/Cargo.toml')
                 raw_manifest = T.cast('raw.Manifest', toml)
                 manifest_ = Manifest.from_raw(raw_manifest, path)
                 self.manifests[subdir] = manifest_
@@ -455,6 +457,8 @@ def load_wraps(source_dir: str, subproject_dir: str) -> T.List[PackageDefinition
         except TomlImplementationMissing as e:
             mlog.warning('Failed to load Cargo.lock:', str(e), fatal=False)
             return wraps
+        if not validator(raw.CargoLock)(toml):
+            raise MesonException(f'invalid {filename}')
         raw_cargolock = T.cast('raw.CargoLock', toml)
         cargolock = CargoLock.from_raw(raw_cargolock)
         for package in cargolock.package:
