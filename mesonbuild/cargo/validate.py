@@ -38,8 +38,16 @@ def is_tuple(type_: T.Type) -> bool:
     return is_subclass(type_, tuple)
 
 
+def is_typed_dict(type_: T.Type) -> bool:
+    return hasattr(type_, "__orig_bases__") and T.TypedDict in type_.__orig_bases__
+
+
 def is_literal(type_: T.Type) -> bool:
     return is_generic(type_) and type_.__origin__ == T.Literal
+
+
+def is_required(type_: T.Type) -> bool:
+    return is_generic(type_) and type_.__origin__ == T.Required
 
 
 def is_new_type(type_: T.Type) -> bool:
@@ -98,6 +106,21 @@ def is_type(type_: T.Type) -> bool:
         return False
 
 
+def typeddict_validator(type_: T.Type) -> T.Callable[[object], bool]:
+    required_keys = {k for k, v in T.get_type_hints(type_, include_extras=True).items()
+                     if is_required(v)}
+    hints = T.get_type_hints(type_)
+    validators = {k: validator(hint) for k, hint in hints.items()}
+    if type_.__total__:
+        return lambda value: isinstance(value, T.Mapping) and \
+            all(k in value for k in required_keys) and \
+            all(k in validators and validators[k](v) for k, v in value.items())
+    else:
+        return lambda value: isinstance(value, T.Mapping) and \
+            all(k in value for k in required_keys) and \
+            all(k not in validators or validators[k](v) for k, v in value.items())
+
+
 VALIDATORS: T.Dict[T.Type, T.Callable[[object], bool]] = dict()
 
 def validator(type_: T.Type) -> T.Callable[[object], bool]:
@@ -108,6 +131,9 @@ def validator(type_: T.Type) -> T.Callable[[object], bool]:
         if is_union(type_):
             validators = [validator(t) for t in extract_generic(type_)]
             return lambda value: any(v(value) for v in validators)
+
+        if is_typed_dict(type_):
+            return typeddict_validator(type_)
 
         if is_new_type(type_):
             return validator(extract_new_type(type_))

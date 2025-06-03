@@ -12,7 +12,7 @@ from mesonbuild.cargo import cfg, load_wraps
 from mesonbuild.cargo.cfg import TokenType
 from mesonbuild.cargo.manifest import Dependency, Manifest, Package, Workspace
 from mesonbuild.cargo.toml import load_toml
-from mesonbuild.cargo.validate import validator
+from mesonbuild.cargo.validate import validator, typeddict_validator
 from mesonbuild.cargo.version import convert
 
 
@@ -473,6 +473,21 @@ class A:
     pass
 
 
+class TypedDictExample(T.TypedDict, total=False):
+    name: str
+    version: str
+
+
+class TypedDictReq(T.TypedDict, total=False):
+    name: T.Required[str]
+    version: str
+
+
+class TypedDictTotal(T.TypedDict):
+    name: T.Required[str]
+    version: str
+
+
 class ValidatorTest(unittest.TestCase):
 
     def test_validator(self):
@@ -526,3 +541,17 @@ class ValidatorTest(unittest.TestCase):
 
         assert validator(A)(A())
         assert not validator(A)(A)
+
+    def test_typeddict_validator(self):
+        assert validator(TypedDictExample)({})
+        assert validator(TypedDictExample)({'name': 'abc'})
+        assert validator(TypedDictExample)({'name': 'abc', 'extra': 123})
+        assert not validator(TypedDictExample)({'name': 123})
+
+        assert not validator(TypedDictReq)({})
+        assert validator(TypedDictReq)({'name': 'abc'})
+        assert validator(TypedDictReq)({'name': 'abc', 'extra': 123})
+
+        assert not validator(TypedDictTotal)({})
+        assert validator(TypedDictTotal)({'name': 'abc'})
+        assert not validator(TypedDictTotal)({'name': 'abc', 'extra': 123})
