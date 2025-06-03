@@ -14,14 +14,11 @@ from ..mesonlib import MesonException, lazy_property
 from .. import mlog
 
 if T.TYPE_CHECKING:
-    from typing_extensions import Protocol, Self
+    from typing_extensions import Self
 
     from . import raw
     from .raw import EDITION, CRATE_TYPE
-
-    # Copied from typeshed. Blarg that they don't expose this
-    class DataclassInstance(Protocol):
-        __dataclass_fields__: T.ClassVar[dict[str, dataclasses.Field[T.Any]]]
+    from .._typing import DataclassInstance
 
 _DI = T.TypeVar('_DI', bound='DataclassInstance')
 _R = T.TypeVar('_R', bound='raw._BaseBuildTarget')
