@@ -6,7 +6,7 @@
 from __future__ import annotations
 import typing as T
 
-from typing_extensions import Literal, TypedDict, Required
+from typing import Literal, TypedDict, Required
 
 EDITION = Literal['2015', '2018', '2021']
 CRATE_TYPE = Literal['bin', 'lib', 'dylib', 'staticlib', 'cdylib', 'rlib', 'proc-macro']

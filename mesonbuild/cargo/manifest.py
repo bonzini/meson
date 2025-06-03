@@ -9,15 +9,14 @@ import dataclasses
 import os
 import typing as T
 
-from . import version
+from . import raw, version
+from .raw import EDITION, CRATE_TYPE
 from ..mesonlib import MesonException, lazy_property
 from .. import mlog
 
 if T.TYPE_CHECKING:
     from typing_extensions import Self
 
-    from . import raw
-    from .raw import EDITION, CRATE_TYPE
     from .._typing import DataclassInstance
 
 _DI = T.TypeVar('_DI', bound='DataclassInstance')
@@ -311,7 +310,7 @@ class BuildTarget(T.Generic[_R]):
         return _raw_to_dataclass(raw, cls, f'Binary entry {name}')
 
 @dataclasses.dataclass
-class Library(BuildTarget['raw.LibTarget']):
+class Library(BuildTarget[raw.LibTarget]):
 
     """Representation of a Cargo Library Entry."""
 
@@ -331,7 +330,7 @@ class Library(BuildTarget['raw.LibTarget']):
 
 
 @dataclasses.dataclass
-class Binary(BuildTarget['raw.BuildTarget']):
+class Binary(BuildTarget[raw.BuildTarget]):
 
     """Representation of a Cargo Bin Entry."""
 
@@ -346,7 +345,7 @@ class Binary(BuildTarget['raw.BuildTarget']):
 
 
 @dataclasses.dataclass
-class Test(BuildTarget['raw.BuildTarget']):
+class Test(BuildTarget[raw.BuildTarget]):
 
     """Representation of a Cargo Test Entry."""
 
@@ -360,7 +359,7 @@ class Test(BuildTarget['raw.BuildTarget']):
         return super().from_raw(raw)
 
 @dataclasses.dataclass
-class Benchmark(BuildTarget['raw.BuildTarget']):
+class Benchmark(BuildTarget[raw.BuildTarget]):
 
     """Representation of a Cargo Benchmark Entry."""
 
@@ -375,7 +374,7 @@ class Benchmark(BuildTarget['raw.BuildTarget']):
 
 
 @dataclasses.dataclass
-class Example(BuildTarget['raw.BuildTarget']):
+class Example(BuildTarget[raw.BuildTarget]):
 
     """Representation of a Cargo Example Entry."""
 
