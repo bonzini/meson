@@ -10,6 +10,7 @@ import typing as T
 
 from . import raw, version
 from .raw import EDITION, CRATE_TYPE
+from .validate import dataclass_field_validators
 from .. import mlog
 from ..mesonlib import lazy_property, MesonException
 
@@ -61,14 +62,20 @@ def _raw_mapping_to_attributes(raw: T.Mapping[str, object], cls: T.Type[_DI],
     """
     new_dict = {}
     unexpected = set()
-    fields = {x.name for x in dataclasses.fields(cls)}
+    typedict = dataclass_field_validators(cls)
     for orig_k, v in raw.items():
         k = fixup_meson_varname(orig_k)
-        if k not in fields:
+        if k not in typedict:
             unexpected.add(orig_k)
             continue
         if k in kwargs:
             v = kwargs[k](v)
+        if not typedict[k](v):
+            # treat it as a Meson bug if the type is not TOML-native
+            if isinstance(v, (int, str, bool, list, dict)):
+                raise MesonException(f'unexpected type for key "{k}": "{type(v)}"')
+            else:
+                raise Exception(f'unexpected type for key "{k}": "{type(v)}"')
         new_dict[k] = v
 
     if unexpected:
