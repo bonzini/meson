@@ -511,10 +511,8 @@ class CoreData:
             return False
         return len(self.cross_files) > 0
 
-    def copy_build_options_from_regular_ones(self, shut_up_pylint: bool = True) -> bool:
+    def copy_build_options_from_regular_ones(self) -> bool:
         # FIXME, needs cross compilation support.
-        if shut_up_pylint:
-            return False
         dirty = False
         assert not self.is_cross_build()
         for k in options.BUILTIN_OPTIONS_PER_MACHINE:
