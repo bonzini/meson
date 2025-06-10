@@ -1338,7 +1338,7 @@ class OptionStore:
                     self.set_option(proj_key, valstr, first_invocation)
                 else:
                     self.pending_options[key] = valstr
-        for key, valstr in cmd_line_options.items():
+        for key, valstr in cmd_line_options.items(): # type: ignore[assignment]
             # Due to backwards compatibility we ignore all build-machine options
             # when building natively.
             if not self.is_cross and key.is_for_build():
@@ -1387,7 +1387,8 @@ class OptionStore:
                                         subproject: str,
                                         spcall_default_options: OptionDict,
                                         project_default_options: OptionDict,
-                                        cmd_line_options: OptionDict) -> None:
+                                        cmd_line_options: OptionDict,
+                                        machine_file_options: OptionDict) -> None:
         is_first_invocation = True
         for keystr, valstr in itertools.chain(project_default_options.items(), spcall_default_options.items()):
             if isinstance(keystr, str):
@@ -1407,7 +1408,7 @@ class OptionStore:
                 self.pending_options.pop(key, None)
                 self.augments[key] = valstr
         # Check for pending options
-        for key, valstr in cmd_line_options.items(): # type: ignore [assignment]
+        for key, valstr in itertools.chain(machine_file_options.items(), cmd_line_options.items()): # type: ignore [assignment]
             if key.subproject != subproject:
                 continue
             self.pending_options.pop(key, None)
