@@ -1377,7 +1377,6 @@ class OptionStore:
                                         project_default_options: OptionDict,
                                         cmd_line_options: OptionDict,
                                         machine_file_options: OptionDict) -> None:
-        is_first_invocation = True
         for keystr, valstr in itertools.chain(project_default_options.items(), spcall_default_options.items()):
             if isinstance(keystr, str):
                 key = OptionKey.from_string(keystr)
@@ -1405,7 +1404,7 @@ class OptionStore:
         project_options = [key for key in self.augments
                            if key.subproject == subproject and key in self.project_options]
         for key in project_options:
-            self.set_option(key, self.augments[key], is_first_invocation)
+            self.set_option(key, self.augments[key], True)
             del self.augments[key]
 
     def update_project_options(self, project_options: MutableKeyedOptionDictType, subproject: SubProject) -> None:
