@@ -1402,20 +1402,23 @@ class OptionStore:
                 raise MesonException(f'subproject name not needed in default_options; use "{without_subp}" instead of "{key}"')
             # If the key points to a project option, set the value from that.
             # Otherwise set an augment.
-            if key in self.project_options:
-                self.set_option(key, valstr, is_first_invocation)
-            else:
-                self.pending_options.pop(key, None)
-                self.augments[key] = valstr
-        # Check for pending options
-        for key, valstr in itertools.chain(machine_file_options.items(), cmd_line_options.items()): # type: ignore [assignment]
-            if key.subproject != subproject:
-                continue
             self.pending_options.pop(key, None)
-            if key in self.options:
-                self.set_option(key, valstr, is_first_invocation)
-            else:
-                self.augments[key] = valstr
+            if key in cmd_line_options or key in machine_file_options:
+                continue
+
+            if key not in self.project_options:
+                # Global command line options still win, do not apply default option in that case
+                globalkey = key.evolve(subproject=None)
+                if globalkey in cmd_line_options or globalkey in machine_file_options:
+                    continue
+
+            self.augments[key] = valstr
+
+        project_options = [key for key in self.augments
+                           if key.subproject == subproject and key in self.project_options]
+        for key in project_options:
+            self.set_option(key, self.augments[key], is_first_invocation)
+            del self.augments[key]
 
     def update_project_options(self, project_options: MutableKeyedOptionDictType, subproject: SubProject) -> None:
         for key, value in project_options.items():
