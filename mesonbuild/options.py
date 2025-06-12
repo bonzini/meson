@@ -1305,30 +1305,24 @@ class OptionStore:
             if not self.is_cross and key.is_for_build():
                 continue
             if key.subproject:
-                self.augments[key] = valstr
+                # do apply project() default_options for subprojects here, because
+                # they have low priority
+                self.pending_options[key] = valstr
             else:
                 # Setting a project option with default_options
                 # should arguably be a hard error; the default
                 # value of project option should be set in the option
                 # file, not in the project call.
                 self.set_option_maybe_root(key, valstr, True)
-        for key, valstr in machine_file_options.items():
+
+        # ignore subprojects for now for machine file and command line
+        # options; they are applied later
+        for key, valstr in itertools.chain(machine_file_options.items(), cmd_line_options.items()):
             # Due to backwards compatibility we ignore all build-machine options
             # when building natively.
             if not self.is_cross and key.is_for_build():
                 continue
-            if key.subproject:
-                self.augments[key] = valstr
-            else:
-                self.set_option_maybe_root(key, valstr, True)
-        for key, valstr in cmd_line_options.items():
-            # Due to backwards compatibility we ignore all build-machine options
-            # when building natively.
-            if not self.is_cross and key.is_for_build():
-                continue
-            if key.subproject:
-                self.augments[key] = valstr
-            else:
+            if not key.subproject:
                 self.set_option_maybe_root(key, valstr, True)
 
     def accept_as_pending_option(self, key: OptionKey, known_subprojects: T.Optional[T.Container[str]] = None,
@@ -1364,31 +1358,38 @@ class OptionStore:
                                         project_default_options: OptionDict,
                                         cmd_line_options: OptionDict,
                                         machine_file_options: OptionDict) -> None:
+        # pick up pending per-project augments from the toplevel project() invocation
+        options = {k: v for k, v in self.pending_options.items() if k.subproject == subproject}
+
+        # apply project() and subproject() default_options
         for key, valstr in itertools.chain(project_default_options.items(), spcall_default_options.items()):
             if key.subproject is None:
                 key = key.evolve(subproject=subproject)
             elif key.subproject == subproject:
                 without_subp = key.evolve(subproject=None)
                 raise MesonException(f'subproject name not needed in default_options; use "{without_subp}" instead of "{key}"')
-            # If the key points to a project option, set the value from that.
-            # Otherwise set an augment.
-            self.pending_options.pop(key, None)
-            if key in cmd_line_options or key in machine_file_options:
-                continue
+            options[key] = valstr
 
-            if key not in self.project_options:
-                # Global command line options still win, do not apply default option in that case
-                globalkey = key.evolve(subproject=None)
-                if globalkey in cmd_line_options or globalkey in machine_file_options:
-                    continue
+        # then global settings from machine file and command line
+        for key, valstr in itertools.chain(machine_file_options.items(), cmd_line_options.items()):
+            if key.subproject is None:
+                subp_key = key.evolve(subproject=subproject)
+                self.pending_options.pop(subp_key, None)
+                options.pop(subp_key, None)
 
-            self.augments[key] = valstr
+        # then finally per project augments from machine file and command line
+        for key, valstr in itertools.chain(machine_file_options.items(), cmd_line_options.items()):
+            if key.subproject == subproject:
+                options[key] = valstr
 
-        project_options = [key for key in self.augments
-                           if key.subproject == subproject and key in self.project_options]
-        for key in project_options:
-            self.set_option(key, self.augments[key], True)
-            del self.augments[key]
+        # merge everything computed above into self.augments
+        for key, valstr in options.items():
+            self.pending_options.pop(subp_key, None)
+            if key in self.project_options:
+                self.augments.pop(key, None)
+                self.set_option(key, valstr, True)
+            else:
+                self.augments.setdefault(key, valstr)
 
     def update_project_options(self, project_options: MutableKeyedOptionDictType, subproject: SubProject) -> None:
         for key, value in project_options.items():
