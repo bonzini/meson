@@ -586,9 +586,6 @@ class CoreData:
                       for_machine: MachineChoice, env: 'Environment') -> None:
         """Add global language arguments that are needed before compiler/linker detection."""
         from .compilers import compilers
-        # These options are all new at this point, because the compiler is
-        # responsible for adding its own options, thus calling
-        # `self.optstore.update()`` is perfectly safe.
         for gopt_key, gopt_valobj in compilers.get_global_options(lang, comp, for_machine, env).items():
             self.optstore.add_compiler_option(lang, gopt_key, gopt_valobj)
 
