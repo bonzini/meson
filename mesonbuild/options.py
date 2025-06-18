@@ -58,7 +58,7 @@ if T.TYPE_CHECKING:
 DEFAULT_YIELDING = False
 
 # Can't bind this near the class method it seems, sadly.
-_T = T.TypeVar('_T')
+_V = T.TypeVar('_V', bound='ElementaryOptionValues')
 
 backendlist = ['ninja', 'vs', 'vs2010', 'vs2012', 'vs2013', 'vs2015', 'vs2017', 'vs2019', 'vs2022', 'xcode', 'none']
 genvslitelist = ['vs2022']
@@ -313,19 +313,19 @@ if T.TYPE_CHECKING:
     OptionDict: TypeAlias = T.Dict[OptionKey, ElementaryOptionValues]
 
 @dataclasses.dataclass
-class UserOption(T.Generic[_T], HoldableObject):
+class UserOption(T.Generic[_V], HoldableObject):
 
     name: str
     description: str
-    value_: dataclasses.InitVar[_T]
+    value_: dataclasses.InitVar[_V]
     yielding: bool = DEFAULT_YIELDING
     deprecated: DeprecatedType = False
     readonly: bool = dataclasses.field(default=False)
 
-    def __post_init__(self, value_: _T) -> None:
+    def __post_init__(self, value_: object) -> None:
         self.value = self.validate_value(value_)
         # Final isn't technically allowed in a __post_init__ method
-        self.default: Final[_T] = self.value  # type: ignore[misc]
+        self.default: Final[_V] = self.value  # type: ignore[misc]
 
     def listify(self, value: ElementaryOptionValues) -> T.List[str]:
         if isinstance(value, list):
@@ -346,7 +346,7 @@ class UserOption(T.Generic[_T], HoldableObject):
     # Check that the input is a valid value and return the
     # "cleaned" or "native" version. For example the Boolean
     # option could take the string "true" and return True.
-    def validate_value(self, value: object) -> _T:
+    def validate_value(self, value: object) -> _V:
         raise RuntimeError('Derived option class did not override validate_value.')
 
     def set_value(self, newvalue: object) -> bool:
@@ -355,11 +355,11 @@ class UserOption(T.Generic[_T], HoldableObject):
         return self.value != oldvalue
 
 @dataclasses.dataclass
-class EnumeratedUserOption(UserOption[_T]):
+class EnumeratedUserOption(UserOption[_V]):
 
     """A generic UserOption that has enumerated values."""
 
-    choices: T.List[_T] = dataclasses.field(default_factory=list)
+    choices: T.List[_V] = dataclasses.field(default_factory=list)
 
     def printable_choices(self) -> T.Optional[T.List[str]]:
         return [str(c) for c in self.choices]
@@ -392,7 +392,7 @@ class UserBooleanOption(EnumeratedUserOption[bool]):
         raise MesonException(f'Option "{self.name}" value {value} is not boolean (true or false).')
 
 
-class _UserIntegerBase(UserOption[_T]):
+class _UserIntegerBase(UserOption[_V]):
 
     min_value: T.Optional[int]
     max_value: T.Optional[int]
@@ -400,7 +400,7 @@ class _UserIntegerBase(UserOption[_T]):
     if T.TYPE_CHECKING:
         def toint(self, v: str) -> int: ...
 
-    def __post_init__(self, value_: _T) -> None:
+    def __post_init__(self, value_: _V) -> None:
         super().__post_init__(value_)
         choices: T.List[str] = []
         if self.min_value is not None:
@@ -412,16 +412,16 @@ class _UserIntegerBase(UserOption[_T]):
     def printable_choices(self) -> T.Optional[T.List[str]]:
         return [self.__choices]
 
-    def validate_value(self, value: object) -> _T:
+    def validate_value(self, value: object) -> _V:
         if isinstance(value, str):
-            value = T.cast('_T', self.toint(value))
+            value = T.cast('_V', self.toint(value))
         if not isinstance(value, int):
             raise MesonException(f'Value {value!r} for option "{self.name}" is not an integer.')
         if self.min_value is not None and value < self.min_value:
             raise MesonException(f'Value {value} for option "{self.name}" is less than minimum value {self.min_value}.')
         if self.max_value is not None and value > self.max_value:
             raise MesonException(f'Value {value} for option "{self.name}" is more than maximum value {self.max_value}.')
-        return T.cast('_T', value)
+        return T.cast('_V', value)
 
 
 @dataclasses.dataclass
@@ -488,10 +488,10 @@ class UserComboOption(EnumeratedUserOption[str]):
         return value
 
 @dataclasses.dataclass
-class UserArrayOption(UserOption[T.List[_T]]):
+class UserStringArrayOption(UserOption[T.List[str]]):
 
-    value_: dataclasses.InitVar[T.Union[_T, T.List[_T]]]
-    choices: T.Optional[T.List[_T]] = None
+    value_: dataclasses.InitVar[T.Union[str, T.List[str]]]
+    choices: T.Optional[T.List[str]] = None
     split_args: bool = False
     allow_dups: bool = False
 
@@ -504,10 +504,6 @@ class UserArrayOption(UserOption[T.List[_T]]):
         if self.choices is None:
             return None
         return [str(c) for c in self.choices]
-
-
-@dataclasses.dataclass
-class UserStringArrayOption(UserArrayOption[str]):
 
     def listify(self, value: object) -> T.List[str]:
         try:
@@ -569,9 +565,9 @@ def choices_are_different(a: _U, b: _U) -> bool:
         # We expect `a` and `b` to be of the same type, but can't really annotate it that way.
         assert isinstance(b, EnumeratedUserOption), 'for mypy'
         return a.choices != b.choices
-    elif isinstance(a, UserArrayOption):
+    elif isinstance(a, UserStringArrayOption):
         # We expect `a` and `b` to be of the same type, but can't really annotate it that way.
-        assert isinstance(b, UserArrayOption), 'for mypy'
+        assert isinstance(b, UserStringArrayOption), 'for mypy'
         return a.choices != b.choices
     elif isinstance(a, _UserIntegerBase):
         assert isinstance(b, _UserIntegerBase), 'for mypy'
@@ -660,7 +656,7 @@ def argparse_prefixed_default(opt: AnyOptionType, name: OptionKey, prefix: str =
 def option_to_argparse(option: AnyOptionType, name: OptionKey, parser: argparse.ArgumentParser, help_suffix: str) -> None:
     kwargs: ArgparseKWs = {}
 
-    if isinstance(option, (EnumeratedUserOption, UserArrayOption)):
+    if isinstance(option, (EnumeratedUserOption, UserStringArrayOption)):
         c = option.choices
     else:
         c = None
