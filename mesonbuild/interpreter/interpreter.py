@@ -30,7 +30,7 @@ from ..interpreterbase import InterpreterException, InvalidArguments, InvalidCod
 from ..interpreterbase import Disabler, disablerIfNotFound
 from ..interpreterbase import FeatureNew, FeatureDeprecated, FeatureBroken, FeatureNewKwargs
 from ..interpreterbase import ObjectHolder, ContextManagerObject
-from ..interpreterbase import stringifyUserArguments
+from ..interpreterbase import stringifyUserArguments, FeatureObject
 from ..modules import ExtensionModule, ModuleObject, MutableModuleObject, NewExtensionModule, NotFoundExtensionModule
 from ..optinterpreter import optname_regex
 
@@ -107,7 +107,6 @@ import collections
 import typing as T
 import textwrap
 import importlib
-import copy
 
 if T.TYPE_CHECKING:
     from typing_extensions import Literal
@@ -440,7 +439,7 @@ class Interpreter(InterpreterBase, HoldableObject):
             build.StructuredSources: OBJ.StructuredSourcesHolder,
             compilers.RunResult: compilerOBJ.TryRunResultHolder,
             dependencies.ExternalLibrary: OBJ.ExternalLibraryHolder,
-            options.UserFeatureOption: OBJ.FeatureOptionHolder,
+            FeatureObject: OBJ.FeatureOptionHolder,
             envconfig.MachineInfo: OBJ.MachineHolder,
             build.ConfigurationData: OBJ.ConfigurationDataHolder,
         })
@@ -1091,12 +1090,6 @@ class Interpreter(InterpreterBase, HoldableObject):
             if self.coredata.optstore.is_base_option(optkey):
                 # Due to backwards compatibility return the default
                 # option for base options instead of erroring out.
-                #
-                # TODO: This will have issues if we expect to return a user FeatureOption
-                #       Of course, there's a bit of a layering violation here in
-                #       that we return a UserFeatureOption, but otherwise the held value
-                #       We probably need a lower level feature thing, or an enum
-                #       instead of strings
                 value = self.coredata.optstore.get_default_for_b_option(optkey)
                 value_object = None
             else:
@@ -1104,10 +1097,7 @@ class Interpreter(InterpreterBase, HoldableObject):
                     raise MesonException(f'Option {optname} does not exist for subproject {self.subproject}.')
                 raise MesonException(f'Option {optname} does not exist.')
         if isinstance(value_object, options.UserFeatureOption):
-            ocopy = copy.copy(value_object)
-            ocopy.name = optname
-            ocopy.value = value
-            return ocopy
+            return FeatureObject(optname, value)
         elif optname == 'b_sanitize':
             assert value_object is None or isinstance(value_object, options.UserStringArrayOption)
             # To ensure backwards compatibility this always returns a string.
