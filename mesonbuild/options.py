@@ -877,7 +877,7 @@ class OptionStore:
                 return self.options[parent_key]
             return potential
 
-    def get_value_object_and_value_for(self, key: OptionKey) -> T.Tuple[AnyOptionType, ElementaryOptionValues]:
+    def get_option_and_value_for(self, key: OptionKey) -> T.Tuple[AnyOptionType, ElementaryOptionValues]:
         assert isinstance(key, OptionKey)
         vobject = self.resolve_option(key)
         computed_value = vobject.value
@@ -887,7 +887,7 @@ class OptionStore:
         return (vobject, computed_value)
 
     def option_has_value(self, key: OptionKey, value: ElementaryOptionValues) -> bool:
-        vobject, current_value = self.get_value_object_and_value_for(key)
+        vobject, current_value = self.get_option_and_value_for(key)
         return vobject.validate_value(value) == current_value
 
     def get_value_for(self, name: 'T.Union[OptionKey, str]', subproject: T.Optional[str] = None) -> ElementaryOptionValues:
@@ -896,7 +896,7 @@ class OptionStore:
         else:
             assert subproject is None
             key = name
-        vobject, resolved_value = self.get_value_object_and_value_for(key)
+        vobject, resolved_value = self.get_option_and_value_for(key)
         return resolved_value
 
     def add_system_option(self, key: T.Union[OptionKey, str], valobj: AnyOptionType) -> None:
