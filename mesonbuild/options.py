@@ -1382,20 +1382,21 @@ class OptionStore:
 
     def update_project_options(self, project_options: MutableKeyedOptionDictType, subproject: SubProject) -> None:
         for key, value in project_options.items():
+            key = self.ensure_and_validate_key(key)
             if key not in self.options:
                 self.add_project_option(key, value)
                 continue
             if key.subproject != subproject:
                 raise MesonBugException(f'Tried to set an option for subproject {key.subproject} from {subproject}!')
 
-            oldval = self.get_value_object(key)
+            oldval = self.options[key]
             if type(oldval) is not type(value):
                 self.set_option(key, value.value)
             elif choices_are_different(oldval, value):
                 # If the choices have changed, use the new value, but attempt
                 # to keep the old options. If they are not valid keep the new
                 # defaults but warn.
-                self.set_value_object(key, value)
+                self.options[key] = value
                 try:
                     value.set_value(oldval.value)
                 except MesonException:
