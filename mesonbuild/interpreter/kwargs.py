@@ -13,6 +13,7 @@ from .. import build
 from .. import options
 from ..compilers import Compiler
 from ..dependencies.base import Dependency
+from ..interpreterbase import FeatureObject
 from ..mesonlib import EnvironmentVariables, MachineChoice, File, FileMode, FileOrString
 from ..options import OptionKey
 from ..modules.cmake import CMakeSubprojectOptions
@@ -77,7 +78,7 @@ class ExtractRequired(TypedDict):
     a boolean or a feature option should inherit its arguments from this class.
     """
 
-    required: T.Union[bool, options.UserFeatureOption]
+    required: T.Union[bool, FeatureObject]
 
 
 class ExtractSearchDirs(TypedDict):

@@ -9,7 +9,6 @@ import typing as T
 from . import ExtensionModule, ModuleInfo
 from .. import mesonlib
 from .. import mlog
-from ..options import UserFeatureOption
 from ..build import known_shmod_kwargs, CustomTarget, CustomTargetIndex, BuildTarget, GeneratedList, StructuredSources, ExtractedObjects, SharedModule
 from ..dependencies import NotFoundDependency
 from ..dependencies.detect import get_dep_identifier, find_external_dependency
@@ -20,7 +19,8 @@ from ..interpreter.type_checking import NoneType, PRESERVE_PATH_KW, SHARED_MOD_K
 from ..interpreterbase import (
     noPosargs, noKwargs, permittedKwargs, ContainerTypeInfo,
     InvalidArguments, typed_pos_args, typed_kwargs, KwargInfo,
-    FeatureNew, FeatureNewKwargs, disablerIfNotFound, InterpreterObject
+    FeatureNew, FeatureNewKwargs, disablerIfNotFound, InterpreterObject,
+    FeatureObject,
 )
 from ..mesonlib import MachineChoice
 from ..options import OptionKey
@@ -474,7 +474,7 @@ class PythonModule(ExtensionModule):
     @typed_pos_args('python.find_installation', optargs=[str])
     @typed_kwargs(
         'python.find_installation',
-        KwargInfo('required', (bool, UserFeatureOption), default=True),
+        KwargInfo('required', (bool, FeatureObject), default=True),
         KwargInfo('disabler', bool, default=False, since='0.49.0'),
         KwargInfo('modules', ContainerTypeInfo(list, str), listify=True, default=[], since='0.51.0'),
         _PURE_KW.evolve(default=True, since='0.64.0'),

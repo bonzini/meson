@@ -12,13 +12,12 @@ import re
 
 from . import ModuleReturnValue, ExtensionModule
 from .. import build
-from .. import options
 from .. import mlog
 from ..dependencies import find_external_dependency, Dependency, ExternalLibrary, InternalDependency
 from ..mesonlib import MesonException, File, FileMode, version_compare, Popen_safe
 from ..interpreter import extract_required_kwarg
 from ..interpreter.type_checking import INSTALL_DIR_KW, INSTALL_KW, NoneType
-from ..interpreterbase import ContainerTypeInfo, FeatureDeprecated, KwargInfo, noPosargs, FeatureNew, typed_kwargs, typed_pos_args
+from ..interpreterbase import ContainerTypeInfo, FeatureDeprecated, KwargInfo, noPosargs, FeatureNew, typed_kwargs, typed_pos_args, FeatureObject
 from ..programs import NonExistingExternalProgram
 
 if T.TYPE_CHECKING:
@@ -365,7 +364,7 @@ class QtBaseModule(ExtensionModule):
     @noPosargs
     @typed_kwargs(
         'qt.has_tools',
-        KwargInfo('required', (bool, options.UserFeatureOption), default=False),
+        KwargInfo('required', (bool, FeatureObject), default=False),
         KwargInfo('method', str, default='auto'),
         KwargInfo('tools', ContainerTypeInfo(list, str), listify=True,
                   default=['moc', 'uic', 'rcc', 'lrelease'],
