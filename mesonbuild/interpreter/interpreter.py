@@ -1080,7 +1080,6 @@ class Interpreter(InterpreterBase, HoldableObject):
         if optname_regex.search(optname.split('.', maxsplit=1)[-1]) is not None:
             raise InterpreterException(f'Invalid option name {optname!r}')
 
-        # Will be None only if the value comes from the default
         value_object: T.Optional[options.AnyOptionType]
 
         try:
@@ -1090,8 +1089,8 @@ class Interpreter(InterpreterBase, HoldableObject):
             if self.coredata.optstore.is_base_option(optkey):
                 # Due to backwards compatibility return the default
                 # option for base options instead of erroring out.
-                value = self.coredata.optstore.get_default_for_b_option(optkey)
-                value_object = None
+                option_object = options.COMPILER_BASE_OPTIONS[optkey.evolve(subproject=None)]
+                value = option_object.default
             else:
                 if self.subproject:
                     raise MesonException(f'Option {optname} does not exist for subproject {self.subproject}.')
