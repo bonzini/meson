@@ -1080,11 +1080,11 @@ class Interpreter(InterpreterBase, HoldableObject):
         if optname_regex.search(optname.split('.', maxsplit=1)[-1]) is not None:
             raise InterpreterException(f'Invalid option name {optname!r}')
 
-        value_object: T.Optional[options.AnyOptionType]
+        option_object: T.Optional[options.AnyOptionType]
 
         try:
             optkey = options.OptionKey(optname, self.subproject)
-            value_object, value = self.coredata.optstore.get_value_object_and_value_for(optkey)
+            option_object, value = self.coredata.optstore.get_option_and_value_for(optkey)
         except KeyError:
             if self.coredata.optstore.is_base_option(optkey):
                 # Due to backwards compatibility return the default
@@ -1095,10 +1095,10 @@ class Interpreter(InterpreterBase, HoldableObject):
                 if self.subproject:
                     raise MesonException(f'Option {optname} does not exist for subproject {self.subproject}.')
                 raise MesonException(f'Option {optname} does not exist.')
-        if isinstance(value_object, options.UserFeatureOption):
+        if isinstance(option_object, options.UserFeatureOption):
             return FeatureObject(optname, value)
         elif optname == 'b_sanitize':
-            assert value_object is None or isinstance(value_object, options.UserStringArrayOption)
+            assert option_object is None or isinstance(option_object, options.UserStringArrayOption)
             # To ensure backwards compatibility this always returns a string.
             # We may eventually want to introduce a new "format" kwarg that
             # allows the user to modify this behaviour, but for now this is
