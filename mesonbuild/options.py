@@ -842,7 +842,7 @@ class OptionStore:
         return self.pending_options.get(key, default)
 
     def get_value(self, key: T.Union[OptionKey, str]) -> ElementaryOptionValues:
-        return self.get_value_object(key).value
+        return self[key].value
 
     def __len__(self) -> int:
         return len(self.options)
@@ -1126,10 +1126,6 @@ class OptionStore:
                     new_value = prefix_mapping[new_prefix]
             valobj.set_value(new_value)
 
-    def get_value_object(self, key: T.Union[OptionKey, str]) -> AnyOptionType:
-        key = self.ensure_and_validate_key(key)
-        return self.options[key]
-
     def remove(self, key: OptionKey) -> None:
         del self.options[key]
         try:
@@ -1140,6 +1136,10 @@ class OptionStore:
     def __contains__(self, key: T.Union[str, OptionKey]) -> bool:
         key = self.ensure_and_validate_key(key)
         return key in self.options
+
+    def __getitem__(self, key: T.Union[OptionKey, str]) -> AnyOptionType:
+        key = self.ensure_and_validate_key(key)
+        return self.options[key]
 
     def __repr__(self) -> str:
         return repr(self.options)
