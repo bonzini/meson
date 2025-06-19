@@ -1126,11 +1126,6 @@ class OptionStore:
                     new_value = prefix_mapping[new_prefix]
             valobj.set_value(new_value)
 
-    # FIXME, this should be removed.or renamed to "change_type_of_existing_object" or something like that
-    def set_value_object(self, key: T.Union[OptionKey, str], new_object: AnyOptionType) -> None:
-        key = self.ensure_and_validate_key(key)
-        self.options[key] = new_object
-
     def get_value_object(self, key: T.Union[OptionKey, str]) -> AnyOptionType:
         key = self.ensure_and_validate_key(key)
         return self.options[key]
