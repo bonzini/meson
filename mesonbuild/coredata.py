@@ -516,14 +516,14 @@ class CoreData:
         dirty = False
         assert not self.is_cross_build()
         for k in options.BUILTIN_OPTIONS_PER_MACHINE:
-            o = self.optstore.get_value_object_for(k.name)
-            dirty |= self.optstore.set_option(k, o.value, True)
+            value = self.optstore.get_value_for(k.name)
+            dirty |= self.optstore.set_option(k, value, True)
         for bk, bv in self.optstore.items():
             if bk.machine is MachineChoice.BUILD:
                 hk = bk.as_host()
                 try:
-                    hv = self.optstore.get_value_object(hk)
-                    dirty |= bv.set_value(hv.value)
+                    value = self.optstore.get_value_for(hk)
+                    dirty |= bv.set_value(value)
                 except KeyError:
                     continue
 
