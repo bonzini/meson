@@ -402,11 +402,7 @@ class CoreData:
             newkey = OptionKey(key, target.subproject)
         else:
             newkey = key
-        if newkey.subproject != target.subproject:
-            # FIXME: this should be an error. The caller needs to ensure that
-            # key and target have the same subproject for consistency.
-            # Now just do this to get things going.
-            newkey = newkey.evolve(subproject=target.subproject)
+            assert newkey.subproject == target.subproject
         option_object, value = self.optstore.get_option_and_value_for(newkey)
         override = target.get_override(newkey.name)
         if override is not None:

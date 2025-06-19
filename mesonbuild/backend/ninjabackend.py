@@ -1821,7 +1821,9 @@ class NinjaBackend(backends.Backend):
         args += self.build.get_project_args(cython, target.subproject, target.for_machine)
         args += target.get_extra_args('cython')
 
-        ext = self.get_target_option(target, OptionKey('cython_language', machine=target.for_machine))
+        ext = self.get_target_option(target, OptionKey('cython_language',
+                                                       machine=target.for_machine,
+                                                       subproject=target.subproject))
 
         pyx_sources = []  # Keep track of sources we're adding to build
 

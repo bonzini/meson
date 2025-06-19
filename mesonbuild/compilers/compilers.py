@@ -223,7 +223,7 @@ def option_enabled(boptions: T.Set[OptionKey],
                    env: 'Environment',
                    option: T.Union[str, OptionKey]) -> bool:
     if isinstance(option, str):
-        option = OptionKey(option)
+        option = OptionKey(option, subproject=target.subproject)
     try:
         if option not in boptions:
             return False
@@ -1405,10 +1405,12 @@ class Compiler(HoldableObject, metaclass=abc.ABCMeta):
                               ) -> options.ElementaryOptionValues:
         if isinstance(key, str):
             key = self.form_compileropt_key(key)
+        key = key.evolve(subproject=subproject)
         if target:
+            assert subproject == target.subproject
             return env.coredata.get_option_for_target(target, key)
         else:
-            return env.coredata.optstore.get_value_for(key.evolve(subproject=subproject))
+            return env.coredata.optstore.get_value_for(key)
 
     def _update_language_stds(self, opts: MutableKeyedOptionDictType, value: T.List[str]) -> None:
         key = self.form_compileropt_key('std')

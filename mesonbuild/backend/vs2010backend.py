@@ -1038,7 +1038,9 @@ class Vs2010Backend(backends.Backend):
         # Compile args added from the env or cross file: CFLAGS/CXXFLAGS, etc. We want these
         # to override all the defaults, but not the per-target compile args.
         for lang in file_args.keys():
-            file_args[lang] += self.get_target_option(target, OptionKey(f'{lang}_args', machine=target.for_machine))
+            file_args[lang] += self.get_target_option(target, OptionKey(f'{lang}_args',
+                                                                        machine=target.for_machine,
+                                                                        subproject=target.subproject))
         for args in file_args.values():
             # This is where Visual Studio will insert target_args, target_defines,
             # etc, which are added later from external deps (see below).
@@ -1366,7 +1368,8 @@ class Vs2010Backend(backends.Backend):
         # Exception handling has to be set in the xml in addition to the "AdditionalOptions" because otherwise
         # cl will give warning D9025: overriding '/Ehs' with cpp_eh value
         if 'cpp' in target.compilers:
-            eh = self.environment.coredata.get_option_for_target(target, OptionKey('cpp_eh', machine=target.for_machine))
+            key = OptionKey('cpp_eh', self.subproject, self.for_machine)
+            eh = self.environment.coredata.get_option_for_target(target, key)
             if eh == 'a':
                 ET.SubElement(clconf, 'ExceptionHandling').text = 'Async'
             elif eh == 's':
