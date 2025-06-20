@@ -547,7 +547,7 @@ class ConverterTarget:
     @lru_cache(maxsize=None)
     def _all_lang_stds(self, lang: str) -> 'ImmutableListProtocol[str]':
         try:
-            opt = self.env.coredata.optstore.get_value_object(OptionKey(f'{lang}_std', machine=MachineChoice.BUILD))
+            opt = self.env.coredata.optstore[OptionKey(f'{lang}_std', machine=MachineChoice.BUILD)]
             assert isinstance(opt, (options.UserStdOption, options.UserComboOption)), 'for mypy'
             return opt.choices or []
         except KeyError:

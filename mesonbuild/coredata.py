@@ -407,7 +407,7 @@ class CoreData:
             # key and target have the same subproject for consistency.
             # Now just do this to get things going.
             newkey = newkey.evolve(subproject=target.subproject)
-        (option_object, value) = self.optstore.get_value_object_and_value_for(newkey)
+        option_object, value = self.optstore.get_option_and_value_for(newkey)
         override = target.get_override(newkey.name)
         if override is not None:
             return option_object.validate_value(override)
@@ -419,19 +419,6 @@ class CoreData:
         for key, valstr in options.cmd_line_options.items():
             all_D.append(f'{key!s}={valstr}')
         return self.optstore.set_from_configure_command(all_D, unset_opts)
-
-    def set_option(self, key: OptionKey, value, first_invocation: bool = False) -> bool:
-        dirty = False
-        try:
-            changed = self.optstore.set_option(key, value, first_invocation)
-        except KeyError:
-            raise MesonException(f'Tried to set unknown builtin option {str(key)}')
-        dirty |= changed
-
-        if key.name == 'buildtype':
-            dirty |= self._set_others_from_buildtype(value)
-
-        return dirty
 
     def clear_cache(self) -> None:
         self.deps.host.clear()
@@ -468,33 +455,6 @@ class CoreData:
             result.append(('debug', actual_debug, debug))
         return result
 
-    def _set_others_from_buildtype(self, value: str) -> bool:
-        dirty = False
-
-        if value == 'plain':
-            opt = 'plain'
-            debug = False
-        elif value == 'debug':
-            opt = '0'
-            debug = True
-        elif value == 'debugoptimized':
-            opt = '2'
-            debug = True
-        elif value == 'release':
-            opt = '3'
-            debug = False
-        elif value == 'minsize':
-            opt = 's'
-            debug = True
-        else:
-            assert value == 'custom'
-            return False
-
-        dirty |= self.optstore.set_option(OptionKey('optimization'), opt)
-        dirty |= self.optstore.set_option(OptionKey('debug'), debug)
-
-        return dirty
-
     def get_external_args(self, for_machine: MachineChoice, lang: str) -> T.List[str]:
         # mypy cannot analyze type of OptionKey
         key = OptionKey(f'{lang}_args', machine=for_machine)
@@ -511,65 +471,21 @@ class CoreData:
             return False
         return len(self.cross_files) > 0
 
-    def copy_build_options_from_regular_ones(self, shut_up_pylint: bool = True) -> bool:
+    def copy_build_options_from_regular_ones(self) -> bool:
         # FIXME, needs cross compilation support.
-        if shut_up_pylint:
-            return False
         dirty = False
         assert not self.is_cross_build()
         for k in options.BUILTIN_OPTIONS_PER_MACHINE:
-            o = self.optstore.get_value_object_for(k.name)
-            dirty |= self.optstore.set_option(k, o.value, True)
+            value = self.optstore.get_value_for(k.name)
+            dirty |= self.optstore.set_option(k, value, True)
         for bk, bv in self.optstore.items():
             if bk.machine is MachineChoice.BUILD:
                 hk = bk.as_host()
                 try:
-                    hv = self.optstore.get_value_object(hk)
-                    dirty |= bv.set_value(hv.value)
+                    value = self.optstore.get_value_for(hk)
+                    dirty |= bv.set_value(value)
                 except KeyError:
                     continue
-
-        return dirty
-
-    def set_options(self, opts_to_set: T.Dict[OptionKey, T.Any], subproject: str = '', first_invocation: bool = False) -> bool:
-        dirty = False
-        if not self.is_cross_build():
-            opts_to_set = {k: v for k, v in opts_to_set.items() if k.machine is not MachineChoice.BUILD}
-        # Set prefix first because it's needed to sanitize other options
-        pfk = OptionKey('prefix')
-        if pfk in opts_to_set:
-            prefix = self.optstore.sanitize_prefix(opts_to_set[pfk])
-            for key in options.BUILTIN_DIR_NOPREFIX_OPTIONS:
-                if key not in opts_to_set:
-                    val = options.BUILTIN_OPTIONS[key].prefixed_default(key, prefix)
-                    dirty |= self.optstore.set_option(key, val)
-
-        unknown_options: T.List[OptionKey] = []
-        for k, v in opts_to_set.items():
-            if k == pfk:
-                continue
-            elif k.evolve(subproject=None) in self.optstore:
-                dirty |= self.set_option(k, v, first_invocation)
-            elif k.machine != MachineChoice.BUILD and not self.optstore.is_compiler_option(k):
-                unknown_options.append(k)
-        if unknown_options:
-            if subproject:
-                # The subproject may have top-level options that should be used
-                # when it is not a subproject. Ignore those for now. With option
-                # refactor they will get per-subproject values.
-                really_unknown = []
-                for uo in unknown_options:
-                    topkey = uo.as_root()
-                    if topkey not in self.optstore:
-                        really_unknown.append(uo)
-                unknown_options = really_unknown
-            if unknown_options:
-                unknown_options_str = ', '.join(sorted(str(s) for s in unknown_options))
-                sub = f'In subproject {subproject}: ' if subproject else ''
-                raise MesonException(f'{sub}Unknown options: "{unknown_options_str}"')
-
-        if not self.is_cross_build():
-            dirty |= self.copy_build_options_from_regular_ones()
 
         return dirty
 

@@ -12,14 +12,13 @@ import typing as T
 
 from .. import build
 from .. import dependencies
-from .. import options
 from .. import mesonlib
 from .. import mlog
 from ..compilers import SUFFIX_TO_LANG, RunResult
 from ..compilers.compilers import CompileCheckMode
 from ..interpreterbase import (ObjectHolder, noPosargs, noKwargs,
                                FeatureNew, FeatureNewKwargs, disablerIfNotFound,
-                               InterpreterException, InterpreterObject)
+                               FeatureObject, InterpreterException, InterpreterObject)
 from ..interpreterbase.decorators import ContainerTypeInfo, typed_kwargs, KwargInfo, typed_pos_args
 from ..options import OptionKey
 from .interpreterobjects import (extract_required_kwarg, extract_search_dirs)
@@ -89,7 +88,7 @@ if T.TYPE_CHECKING:
         header_include_directories: T.List[build.IncludeDirs]
         header_no_builtin_args: bool
         header_prefix: str
-        header_required: T.Union[bool, options.UserFeatureOption]
+        header_required: T.Union[bool, FeatureObject]
 
     class PreprocessKW(TypedDict):
         output: str
@@ -670,7 +669,7 @@ class CompilerHolder(ObjectHolder['Compiler']):
     @typed_pos_args('compiler.find_library', str)
     @typed_kwargs(
         'compiler.find_library',
-        KwargInfo('required', (bool, options.UserFeatureOption), default=True),
+        KwargInfo('required', (bool, FeatureObject), default=True),
         KwargInfo('has_headers', ContainerTypeInfo(list, str), listify=True, default=[], since='0.50.0'),
         KwargInfo('static', (bool, NoneType), since='0.51.0'),
         KwargInfo('disabler', bool, default=False, since='0.49.0'),

@@ -2,9 +2,11 @@
 # Copyright 2013-2021 The Meson development team
 
 from __future__ import annotations
+from dataclasses import dataclass
 
 from .. import mesonlib, mparser
 from .exceptions import InterpreterException, InvalidArguments
+from ..mesonlib import HoldableObject
 from ..options import UserOption
 
 
@@ -65,3 +67,18 @@ def stringifyUserArguments(args: TYPE_var, subproject: SubProject, quote: bool =
         FeatureNew.single_use('User option in string format', '1.3.0', subproject)
         return stringifyUserArguments(args.printable_value(), subproject)
     raise InvalidArguments('Value other than strings, integers, bools, options, dictionaries and lists thereof.')
+
+
+@dataclass
+class FeatureObject(HoldableObject):
+    name: str
+    value: str
+
+    def is_enabled(self) -> bool:
+        return self.value == 'enabled'
+
+    def is_disabled(self) -> bool:
+        return self.value == 'disabled'
+
+    def is_auto(self) -> bool:
+        return self.value == 'auto'

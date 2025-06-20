@@ -30,7 +30,7 @@ from ..interpreterbase import InterpreterException, InvalidArguments, InvalidCod
 from ..interpreterbase import Disabler, disablerIfNotFound
 from ..interpreterbase import FeatureNew, FeatureDeprecated, FeatureBroken, FeatureNewKwargs
 from ..interpreterbase import ObjectHolder, ContextManagerObject
-from ..interpreterbase import stringifyUserArguments
+from ..interpreterbase import stringifyUserArguments, FeatureObject
 from ..modules import ExtensionModule, ModuleObject, MutableModuleObject, NewExtensionModule, NotFoundExtensionModule
 from ..optinterpreter import optname_regex
 
@@ -107,7 +107,6 @@ import collections
 import typing as T
 import textwrap
 import importlib
-import copy
 
 if T.TYPE_CHECKING:
     from typing_extensions import Literal
@@ -440,7 +439,7 @@ class Interpreter(InterpreterBase, HoldableObject):
             build.StructuredSources: OBJ.StructuredSourcesHolder,
             compilers.RunResult: compilerOBJ.TryRunResultHolder,
             dependencies.ExternalLibrary: OBJ.ExternalLibraryHolder,
-            options.UserFeatureOption: OBJ.FeatureOptionHolder,
+            FeatureObject: OBJ.FeatureOptionHolder,
             envconfig.MachineInfo: OBJ.MachineHolder,
             build.ConfigurationData: OBJ.ConfigurationDataHolder,
         })
@@ -1081,35 +1080,25 @@ class Interpreter(InterpreterBase, HoldableObject):
         if optname_regex.search(optname.split('.', maxsplit=1)[-1]) is not None:
             raise InterpreterException(f'Invalid option name {optname!r}')
 
-        # Will be None only if the value comes from the default
-        value_object: T.Optional[options.AnyOptionType]
+        option_object: T.Optional[options.AnyOptionType]
 
         try:
             optkey = options.OptionKey(optname, self.subproject)
-            value_object, value = self.coredata.optstore.get_value_object_and_value_for(optkey)
+            option_object, value = self.coredata.optstore.get_option_and_value_for(optkey)
         except KeyError:
             if self.coredata.optstore.is_base_option(optkey):
                 # Due to backwards compatibility return the default
                 # option for base options instead of erroring out.
-                #
-                # TODO: This will have issues if we expect to return a user FeatureOption
-                #       Of course, there's a bit of a layering violation here in
-                #       that we return a UserFeatureOption, but otherwise the held value
-                #       We probably need a lower level feature thing, or an enum
-                #       instead of strings
-                value = self.coredata.optstore.get_default_for_b_option(optkey)
-                value_object = None
+                option_object = options.COMPILER_BASE_OPTIONS[optkey.evolve(subproject=None)]
+                value = option_object.default
             else:
                 if self.subproject:
                     raise MesonException(f'Option {optname} does not exist for subproject {self.subproject}.')
                 raise MesonException(f'Option {optname} does not exist.')
-        if isinstance(value_object, options.UserFeatureOption):
-            ocopy = copy.copy(value_object)
-            ocopy.name = optname
-            ocopy.value = value
-            return ocopy
+        if isinstance(option_object, options.UserFeatureOption):
+            return FeatureObject(optname, value)
         elif optname == 'b_sanitize':
-            assert value_object is None or isinstance(value_object, options.UserStringArrayOption)
+            assert option_object is None or isinstance(option_object, options.UserStringArrayOption)
             # To ensure backwards compatibility this always returns a string.
             # We may eventually want to introduce a new "format" kwarg that
             # allows the user to modify this behaviour, but for now this is
@@ -1157,15 +1146,9 @@ class Interpreter(InterpreterBase, HoldableObject):
                 mlog.log('Auto detected Visual Studio backend:', mlog.bold(self.backend.name))
             if not self.environment.first_invocation:
                 raise MesonBugException(f'Backend changed from {backend_name} to {self.backend.name}')
-            self.coredata.set_option(OptionKey('backend'), self.backend.name, first_invocation=True)
+            self.coredata.optstore.set_option(OptionKey('backend'), self.backend.name, first_invocation=True)
 
-        # Only init backend options on first invocation otherwise it would
-        # override values previously set from command line.
-        if self.environment.first_invocation:
-            self.coredata.init_backend_options(backend_name)
-
-        options = {k: v for k, v in self.environment.options.items() if self.environment.coredata.optstore.is_backend_option(k)}
-        self.coredata.set_options(options)
+        self.environment.init_backend_options(backend_name)
 
     @typed_pos_args('project', str, varargs=str)
     @typed_kwargs(
@@ -1225,7 +1208,6 @@ class Interpreter(InterpreterBase, HoldableObject):
         self.set_backend()
 
         if not self.is_subproject():
-            self.coredata.optstore.validate_cmd_line_options(self.user_defined_options.cmd_line_options)
             self.build.project_name = proj_name
         self.active_projectname = proj_name
 

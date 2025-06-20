@@ -9,10 +9,10 @@ from __future__ import annotations
 import os
 import typing as T
 
-from .. import compilers, environment, mesonlib, options
+from .. import compilers, environment, mesonlib
 from ..build import Executable, Jar, SharedLibrary, SharedModule, StaticLibrary
 from ..compilers import detect_compiler_for
-from ..interpreterbase import InvalidArguments, SubProject, UnknownValue
+from ..interpreterbase import InvalidArguments, SubProject, UnknownValue, FeatureObject
 from ..mesonlib import MachineChoice
 from ..options import OptionKey
 from ..mparser import BaseNode, ArrayNode, ElementaryNode, IdNode, FunctionNode, StringNode
@@ -100,16 +100,6 @@ class IntrospectionInterpreter(AstInterpreter):
                 return [node.value]
             return None
 
-        def create_options_dict(options: T.List[str], subproject: str = '') -> T.Mapping[OptionKey, str]:
-            result: T.MutableMapping[OptionKey, str] = {}
-            for o in options:
-                try:
-                    (key, value) = o.split('=', 1)
-                except ValueError:
-                    raise mesonlib.MesonException(f'Option {o!r} must have a value separated by equals sign.')
-                result[OptionKey(key)] = value
-            return result
-
         proj_name = args[0]
         proj_vers = kwargs.get('version', 'undefined')
         if isinstance(proj_vers, ElementaryNode):
@@ -138,10 +128,8 @@ class IntrospectionInterpreter(AstInterpreter):
                     if os.path.isdir(os.path.join(subprojects_dir, i)):
                         self.do_subproject(SubProject(i))
 
-        self.coredata.init_backend_options(self.backend)
-        options = {k: v for k, v in self.environment.options.items() if self.environment.coredata.optstore.is_backend_option(k)}
+        self.environment.init_backend_options(self.backend)
 
-        self.coredata.set_options(options)
         self._add_languages(proj_langs, True, MachineChoice.HOST)
         self._add_languages(proj_langs, True, MachineChoice.BUILD)
 
@@ -159,8 +147,8 @@ class IntrospectionInterpreter(AstInterpreter):
     def func_add_languages(self, node: BaseNode, args: T.List[TYPE_var], kwargs: T.Dict[str, TYPE_var]) -> UnknownValue:
         kwargs = self.flatten_kwargs(kwargs)
         required = kwargs.get('required', True)
-        assert isinstance(required, (bool, options.UserFeatureOption, UnknownValue)), 'for mypy'
-        if isinstance(required, options.UserFeatureOption):
+        assert isinstance(required, (bool, FeatureObject, UnknownValue)), 'for mypy'
+        if isinstance(required, FeatureObject):
             required = required.is_enabled()
         if 'native' in kwargs:
             native = kwargs.get('native', False)
