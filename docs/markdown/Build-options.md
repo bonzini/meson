@@ -244,6 +244,9 @@ project which also has an option called `some_option`, then calling
 `yield` is `false`, `get_option` returns the value of the subproject's
 option.
 
+`Since 1.8.0`, it is possible to override the value of a yielding
+option with `-Dsub:some_option=anothervalue`.
+
 
 ## Built-in build options
 
