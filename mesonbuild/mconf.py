@@ -352,11 +352,8 @@ class Conf:
         else:
             mlog.log('\nThere are no option augments.')
 
-def has_option_flags(options: CMDOptions) -> bool:
-    return bool(options.cmd_line_options)
-
 def is_print_only(options: CMDOptions) -> bool:
-    if has_option_flags(options):
+    if options.cmd_line_options:
         return False
     if options.clearcache:
         return False
@@ -374,7 +371,7 @@ def run_impl(options: CMDOptions, builddir: str) -> int:
             return 0
 
         save = False
-        if has_option_flags(options):
+        if options.cmd_line_options:
             save |= c.coredata.set_from_configure_command(options)
             coredata.update_cmd_line_file(builddir, options)
         if options.clearcache:
