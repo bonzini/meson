@@ -406,13 +406,15 @@ class Resolver:
             if k in self.provided_deps:
                 prev_wrap = self.provided_deps[k]
                 m = f'Multiple wrap files provide {k!r} dependency: {wrap.name} and {prev_wrap.name}'
-                raise WrapException(m)
+                mlog.warning(m)
+                continue
             self.provided_deps[k] = wrap
         for k in wrap.provided_programs:
             if k in self.provided_programs:
                 prev_wrap = self.provided_programs[k]
                 m = f'Multiple wrap files provide {k!r} program: {wrap.name} and {prev_wrap.name}'
-                raise WrapException(m)
+                mlog.warning(m)
+                continue
             self.provided_programs[k] = wrap
 
     def load_wrapdb(self) -> None:

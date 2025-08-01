@@ -631,6 +631,7 @@ def load_wraps(source_dir: str, subproject_dir: str) -> T.List[PackageDefinition
     # provides multiple dependency names.
     wraps: T.Dict[str, PackageDefinition] = {}
     filename = os.path.join(source_dir, 'Cargo.lock')
+    print('========', source_dir)
     if os.path.exists(filename):
         try:
             toml = load_toml(filename)
