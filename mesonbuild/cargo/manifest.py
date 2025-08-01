@@ -253,7 +253,7 @@ class Dependency:
             elif v.startswith('='):
                 api.add(version.api(v[1:].strip()))
         if not api:
-            return '0'
+            return ''
         elif len(api) == 1:
             return api.pop()
         else:
