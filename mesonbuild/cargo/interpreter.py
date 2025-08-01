@@ -112,13 +112,22 @@ class Interpreter:
         if pkg:
             return pkg, True
         meson_depname = _dependency_name(package_name, api)
-        subdir, _ = self.environment.wrap_resolver.resolve(meson_depname)
+        return self._fetch_package_from_subproject(package_name, meson_depname)
+
+    def _fetch_package_from_subproject(self, package_name: str, meson_depname: str) -> T.Tuple[PackageState, bool]:
+        subp_name, _ = self.environment.wrap_resolver.find_dep_provider(meson_depname)
+        subdir, _ = self.environment.wrap_resolver.resolve(subp_name)
         subprojects_dir = os.path.join(subdir, 'subprojects')
-        self.environment.wrap_resolver.load_and_merge(subprojects_dir, T.cast('SubProject', meson_depname))
+        self.environment.wrap_resolver.load_and_merge(subprojects_dir, T.cast('SubProject', subp_name))
         manifest = self._load_manifest(subdir)
         downloaded = \
-            meson_depname in self.environment.wrap_resolver.wraps and \
-            self.environment.wrap_resolver.wraps[meson_depname].type is not None
+            subp_name in self.environment.wrap_resolver.wraps and \
+            self.environment.wrap_resolver.wraps[subp_name].type is not None
+        key = PackageKey(package_name, version.api(manifest.package.version))
+
+        pkg = self.packages.get(key)
+        if pkg:
+            return pkg, True
         pkg = PackageState(manifest, downloaded)
         self.packages[key] = pkg
         self._prepare_package(pkg)
@@ -134,18 +143,23 @@ class Interpreter:
             if not dep.optional:
                 self._add_dependency(pkg, depname)
 
-    def _dep_package(self, dep: Dependency) -> PackageState:
-        if not dep.meson_version:
-            # The manifest did not specify a version, but we probably have one
-            # from Cargo.lock. See if any of our subprojects matches.
-            for subp_name in self.environment.wrap_resolver.wraps.keys():
-                m = re.fullmatch(rf'{dep.package}-([\d\.]+)-rs', subp_name)
-                if m is not None:
-                    dep.update_version(m[1])
-                    break
-            else:
-                raise MesonException(f'Cannot determine version of cargo package {dep.package}')
-        return self.packages[PackageKey(dep.package, dep.api)]
+    def _dep_package(self, pkg: PackageState, dep: Dependency) -> PackageState:
+        if dep.git:
+            _, _, directory = _parse_git_url(dep.git, dep.branch)
+            dep_pkg, _ = self._fetch_package_from_subproject(dep.package, directory)
+        else:
+            if not dep.meson_version:
+                # The manifest did not specify a version, but we probably have one
+                # from Cargo.lock. See if any of our subprojects matches.
+                for subp_name in self.environment.wrap_resolver.wraps.keys():
+                    m = re.fullmatch(rf'{dep.package}-([\d\.]+)-rs', subp_name)
+                    if m is not None:
+                        dep.update_version(m[1])
+                        break
+                else:
+                    raise MesonException(f'Cannot determine version of cargo package {dep.package}')
+            dep_pkg, _ = self._fetch_package(dep.package, dep.api)
+        return dep_pkg
 
     def _load_manifest(self, subdir: str) -> Manifest:
         manifest_ = self.manifests.get(subdir)
@@ -168,8 +182,8 @@ class Interpreter:
         if not dep:
             # It could be build/dev/target dependency. Just ignore it.
             return
+        dep_pkg = self._dep_package(pkg, dep)
         pkg.required_deps.add(depname)
-        dep_pkg, _ = self._fetch_package(dep.package, dep.api)
         if dep.default_features:
             self._enable_feature(dep_pkg, 'default')
         for f in dep.features:
@@ -193,7 +207,7 @@ class Interpreter:
                     depname = depname[:-1]
                     if depname in pkg.required_deps:
                         dep = pkg.manifest.dependencies[depname]
-                        dep_pkg = self._dep_package(dep)
+                        dep_pkg = self._dep_package(pkg, dep)
                         self._enable_feature(dep_pkg, dep_f)
                     else:
                         # This feature will be enabled only if that dependency
@@ -203,7 +217,7 @@ class Interpreter:
                     self._add_dependency(pkg, depname)
                     dep = pkg.manifest.dependencies.get(depname)
                     if dep:
-                        dep_pkg = self._dep_package(dep)
+                        dep_pkg = self._dep_package(pkg, dep)
                         self._enable_feature(dep_pkg, dep_f)
             elif f.startswith('dep:'):
                 self._add_dependency(pkg, f[4:])
@@ -264,7 +278,8 @@ class Interpreter:
         ast: T.List[mparser.BaseNode] = []
         for depname in pkg.required_deps:
             dep = pkg.manifest.dependencies[depname]
-            ast += self._create_dependency(dep, build)
+            dep_pkg = self._dep_package(pkg, dep)
+            ast += self._create_dependency(dep_pkg, dep, build)
         ast.append(build.assign(build.array([]), 'system_deps_args'))
         for name, sys_dep in pkg.manifest.system_dependencies.items():
             if sys_dep.enabled(pkg.features):
@@ -298,10 +313,11 @@ class Interpreter:
             ),
         ]
 
-    def _create_dependency(self, dep: Dependency, build: builder.Builder) -> T.List[mparser.BaseNode]:
-        pkg = self._dep_package(dep)
+    def _create_dependency(self, pkg: PackageState, dep: Dependency, build: builder.Builder) -> T.List[mparser.BaseNode]:
+        version_ = dep.meson_version or [pkg.manifest.package.version]
+        api = dep.api or pkg.manifest.package.api
         kw = {
-            'version': build.array([build.string(s) for s in dep.meson_version]),
+            'version': build.array([build.string(s) for s in version_]),
         }
         # Lookup for this dependency with the features we want in default_options kwarg.
         #
@@ -319,7 +335,7 @@ class Interpreter:
             build.assign(
                 build.function(
                     'dependency',
-                    [build.string(_dependency_name(dep.package, dep.api))],
+                    [build.string(_dependency_name(dep.package, api))],
                     kw,
                 ),
                 _dependency_varname(dep.package),
@@ -349,7 +365,7 @@ class Interpreter:
                 build.if_(build.not_in(build.identifier('f'), build.identifier('actual_features')), build.block([
                     build.function('error', [
                         build.string('Dependency'),
-                        build.string(_dependency_name(dep.package, dep.api)),
+                        build.string(_dependency_name(dep.package, api)),
                         build.string('previously configured with features'),
                         build.identifier('actual_features'),
                         build.string('but need'),
@@ -384,7 +400,7 @@ class Interpreter:
             dep = pkg.manifest.dependencies[name]
             dependencies.append(build.identifier(_dependency_varname(dep.package)))
             if name != dep.package:
-                dep_pkg = self._dep_package(dep)
+                dep_pkg = self._dep_package(pkg, dep)
                 dep_lib_name = dep_pkg.manifest.lib.name
                 dependency_map[build.string(fixup_meson_varname(dep_lib_name))] = build.string(name)
         for name, sys_dep in pkg.manifest.system_dependencies.items():
