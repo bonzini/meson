@@ -210,9 +210,8 @@ class IntrospectionInterpreter(AstInterpreter):
                     options = {}
                     for k in comp.get_options():
                         v = copy.copy(self.coredata.optstore.get_value_object(k))
-                        k = k.evolve(subproject=self.subproject)
                         options[k] = v
-                    self.coredata.add_compiler_options(options, lang, for_machine)
+                    self.coredata.add_compiler_options(options, lang, for_machine, self.subproject)
 
     def func_dependency(self, node: BaseNode, args: T.List[TYPE_var], kwargs: T.Dict[str, TYPE_var]) -> None:
         args = self.flatten_args(args)
