@@ -53,6 +53,7 @@ if T.TYPE_CHECKING:
     _PL = T.TypeVar('_PL', bound=T.Union[_EnvPickleLoadable, _VerPickleLoadable])
 
 FileOrString = T.Union['File', str]
+FileTypes = T.TypeVar('FileTypes', 'File', str, FileOrString)
 
 _T = T.TypeVar('_T')
 _U = T.TypeVar('_U')
@@ -70,6 +71,7 @@ __all__ = [
     'MachineChoice',
     'EnvironmentException',
     'FileOrString',
+    'FileTypes',
     'GitException',
     'dump_conf_header',
     'OrderedSet',
@@ -472,8 +474,8 @@ def get_compiler_for_source(compilers: T.Iterable['Compiler'], src: 'FileOrStrin
     raise MesonException(f'No specified compiler can handle file {src!s}')
 
 
-def classify_unity_sources(compilers: T.Iterable['Compiler'], sources: T.Sequence['FileOrString']) -> T.Dict['Compiler', T.List['FileOrString']]:
-    compsrclist: T.Dict['Compiler', T.List['FileOrString']] = {}
+def classify_unity_sources(compilers: T.Iterable[Compiler], sources: T.List[FileTypes]) -> T.Dict[Compiler, T.List[FileTypes]]:
+    compsrclist: T.Dict['Compiler', T.List[FileTypes]] = {}
     for src in sources:
         comp = get_compiler_for_source(compilers, src)
         if comp not in compsrclist:

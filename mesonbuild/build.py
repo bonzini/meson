@@ -46,7 +46,7 @@ if T.TYPE_CHECKING:
     from .interpreter.interpreterobjects import Test, Doctest
     from .interpreterbase import SubProject
     from .linkers.linkers import StaticLinker
-    from .mesonlib import ExecutableSerialisation, FileMode, FileOrString
+    from .mesonlib import ExecutableSerialisation, FileMode, FileOrString, FileTypes
     from .modules import ModuleState
     from .mparser import BaseNode
 
@@ -435,9 +435,9 @@ class ExtractedObjects(HoldableObject):
         return r.format(self.__class__.__name__, self.target.name, self.srclist)
 
     @staticmethod
-    def get_sources(sources: T.Sequence['FileOrString'], generated_sources: T.Sequence['GeneratedTypes']) -> T.List['FileOrString']:
+    def get_sources(sources: T.List[FileTypes], generated_sources: T.Sequence['GeneratedTypes']) -> T.List[FileOrString]:
         # Merge sources and generated sources
-        sources = list(sources)
+        sources: T.List[FileOrString] = list(sources)
         for gensrc in generated_sources:
             for s in gensrc.get_outputs():
                 # We cannot know the path where this source will be generated,

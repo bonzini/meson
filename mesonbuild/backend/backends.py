@@ -41,7 +41,7 @@ if T.TYPE_CHECKING:
     from ..environment import Environment
     from ..interpreter import Interpreter, Test
     from ..linkers.linkers import StaticLinker
-    from ..mesonlib import FileMode, FileOrString
+    from ..mesonlib import FileMode, FileOrString, FileTypes
     from ..options import ElementaryOptionValues
 
     from typing_extensions import TypedDict, NotRequired
@@ -421,7 +421,7 @@ class Backend:
         osrc = f'{target.name}-unity{number}.{suffix}'
         return mesonlib.File.from_built_file(self.get_target_private_dir(target), osrc)
 
-    def generate_unity_files(self, target: build.BuildTarget, unity_src: str) -> T.List[mesonlib.File]:
+    def generate_unity_files(self, target: build.BuildTarget, unity_src: T.List[FileTypes]) -> T.List[mesonlib.File]:
         abs_files: T.List[str] = []
         result: T.List[mesonlib.File] = []
         compsrcs = classify_unity_sources(target.compilers.values(), unity_src)
