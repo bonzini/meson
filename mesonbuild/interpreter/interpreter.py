@@ -792,6 +792,9 @@ class Interpreter(InterpreterBase, HoldableObject):
                 raise InterpreterException(f'command {cmd.get_name()!r} not found or not executable')
             if not cmd.runnable():
                 self._compiled_exe_error(cmd)
+            if isinstance(cmd, build.LocalProgram):
+                for f in cmd.depend_files:
+                    self.add_build_def_file(f)
         elif isinstance(cmd, compilers.Compiler):
             expanded_args = cmd.get_exe_args()
             cmd = cmd.get_exe()
@@ -818,6 +821,9 @@ class Interpreter(InterpreterBase, HoldableObject):
                     raise InterpreterException(f'command {cmd.get_name()!r} not found or not executable')
                 if not a.runnable():
                     self._compiled_exe_error(a)
+                if isinstance(a, build.LocalProgram):
+                    for f in a.depend_files:
+                        self.add_build_def_file(f)
                 expanded_args.append(a.get_path())
             elif isinstance(a, compilers.Compiler):
                 FeatureNew.single_use('Compiler object as a variadic argument to `run_command`', '0.61.0', self.subproject, location=self.current_node)
@@ -2247,18 +2253,21 @@ class Interpreter(InterpreterBase, HoldableObject):
                              location=node)
             name = name.replace(':', '_')
         exe = args[1]
+        depends = list(kwargs['depends'] or [])
         if isinstance(exe, Program):
             if not exe.found():
                 raise InvalidArguments('Tried to use not-found external program as test exe')
             if isinstance(exe, build.LocalProgram):
+                # FIXME: tests does not have depend_files?
+                depends.extend(exe.depends)
                 # This will add exe to 'depends' below
                 exe = exe.program
         elif isinstance(exe, mesonlib.File):
             exe = self.find_program_impl([exe])
         if isinstance(exe, (build.Executable, build.CustomTarget)):
-            kwargs.setdefault('depends', []).append(exe)
+            depends.append(exe)
         elif isinstance(exe, build.CustomTargetIndex):
-            kwargs.setdefault('depends', []).append(exe.target)
+            depends.append(exe.target)
 
         env = self.unpack_env_kwarg(kwargs)
 
@@ -2277,7 +2286,7 @@ class Interpreter(InterpreterBase, HoldableObject):
                      prj,
                      suite,
                      exe,
-                     kwargs['depends'],
+                     depends,
                      kwargs.get('is_parallel', False),
                      kwargs['args'],
                      env,

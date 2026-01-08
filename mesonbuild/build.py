@@ -1920,6 +1920,9 @@ class Generator(HoldableObject):
         self.depfile = depfile
         self.capture = capture
         self.depends: T.List[BuildTargetTypes] = depends or []
+        if isinstance(exe, LocalProgram):
+            # FIXME: Generator does not have depend_files?
+            self.depends.extend(exe.depends)
         self.arglist = arguments
         self.outputs = output
         self.name = name
@@ -2768,6 +2771,8 @@ class CommandBase:
         final_cmd: T.List[T.Union[str, File, BuildTarget, 'CustomTarget']] = []
         for c in cmd:
             if isinstance(c, LocalProgram):
+                self.dependencies.extend(c.depends)
+                self.depend_files.extend(c.depend_files)
                 c = c.program
             if isinstance(c, str):
                 final_cmd.append(c)
@@ -3326,7 +3331,9 @@ class ConfigurationData(HoldableObject):
         return self.values.keys()
 
 class LocalProgram(programs.Program):
-    def __init__(self, program: T.Union[programs.ExternalProgram, Executable, CustomTarget, CustomTargetIndex], version: str) -> None:
+    def __init__(self, program: T.Union[programs.ExternalProgram, Executable, CustomTarget, CustomTargetIndex], version: str,
+                 depends: T.Optional[T.List[T.Union[BuildTarget, CustomTarget]]] = None,
+                 depend_files: T.Optional[T.List[File]] = None) -> None:
         super().__init__()
         if isinstance(program, CustomTarget):
             if len(program.outputs) != 1:
@@ -3335,6 +3342,8 @@ class LocalProgram(programs.Program):
         self.for_machine = program.for_machine
         self.program = program
         self.version = version
+        self.depends = list(depends or [])
+        self.depend_files = list(depend_files or [])
 
     def found(self) -> bool:
         return True
