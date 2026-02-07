@@ -444,6 +444,18 @@ class Build:
         """
         new = self.copy()
         new.is_build_only = True
+        if not self.environment.is_cross_build() or self.is_build_only:
+            return new
+
+        new.environment = self.environment.copy_for_build_machine()
+
+        # Share build machine state between host/build slots
+        new.projects = PerMachineDefaultable(new.projects.build).default_missing()
+        new.find_overrides = PerMachineDefaultable(new.find_overrides.build).default_missing()
+        new.dependency_overrides = PerMachineDefaultable(new.dependency_overrides.build).default_missing()
+        new.searched_programs = PerMachineDefaultable(new.searched_programs.build).default_missing()
+        new.stdlibs = PerMachineDefaultable(new.stdlibs.build).default_missing()
+        new.static_linker = PerMachineDefaultable(new.static_linker.build).default_missing()
         return new
 
     def merge(self, other: Build) -> None:
@@ -453,16 +465,24 @@ class Build:
         for k, v in other.__dict__.items():
             # These are modified for the build-only config, and are the same
             # for all build != host config.  No need to copy them.
-            if k == 'is_build_only':
+            if k in {'is_build_only', 'environment'}:
                 continue
             # These are not modified in subprojects
             if k in {'global_args', 'global_link_args'}:
                 continue
+            if other.is_build_only and k in {'data', 'emptydir', 'headers', 'install_dirs',
+                                             'install_scripts', 'man', 'symlinks'}:
+                continue
 
             if isinstance(v, PerMachine):
                 dest = self.__dict__[k]
-                dest.build = v.build
-                dest.host = v.host
+                # If other has a different "host machine" than us, skip it
+                if dest.build is dest.host or not other.is_build_only:
+                    dest.build = v.build
+                    dest.host = v.host
+                else:
+                    assert v.build is None or v.host is None or v.host is v.build, f'invalid {k} for build machine subproject'
+                    dest.build = v.host
             else:
                 self.__dict__[k] = v
 
