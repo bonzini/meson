@@ -163,7 +163,7 @@ class Vs2010Backend(backends.Backend):
                 self.generate_genlist_for_target(x, target, parent_node, [], [], [])
         target_private_dir = self.relpath(self.get_target_private_dir(target), self.get_target_dir(target))
         down = self.target_to_build_root(target)
-        if isinstance(genlist, (build.CustomTarget, build.CustomTargetIndex)):
+        if isinstance(genlist, (build.BuildTarget, build.CustomTarget, build.CustomTargetIndex)):
             for i in genlist.get_outputs():
                 # Path to the generated source from the current vcxproj dir via the build root
                 ipath = os.path.join(down, self.get_target_dir(genlist), i)

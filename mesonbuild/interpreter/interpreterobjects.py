@@ -1210,7 +1210,7 @@ class GeneratorHolder(ObjectHolder[build.Generator]):
     def __init__(self, gen: build.Generator, interpreter: 'Interpreter'):
         super().__init__(gen, interpreter)
 
-    @typed_pos_args('generator.process', min_varargs=1, varargs=(str, mesonlib.File, build.CustomTarget, build.CustomTargetIndex, build.GeneratedList))
+    @typed_pos_args('generator.process', min_varargs=1, varargs=(str, mesonlib.File, build.BuildTarget, build.CustomTarget, build.CustomTargetIndex, build.GeneratedList))
     @typed_kwargs(
         'generator.process',
         KwargInfo('preserve_path_from', (str, NoneType), since='0.45.0'),
@@ -1232,6 +1232,10 @@ class GeneratorHolder(ObjectHolder[build.Generator]):
             FeatureNew.single_use(
                 'Calling generator.process with CustomTarget or Index of CustomTarget.',
                 '0.57.0', self.interpreter.subproject)
+        if any(isinstance(a, build.BuildTarget) for a in args[0]):
+            FeatureNew.single_use(
+                'Calling generator.process with a build target.',
+                '1.11.0', self.interpreter.subproject)
 
         gl = self.held_object.process_files(args[0], self.interpreter.subdir,
                                             preserve_path_from, extra_args=kwargs['extra_args'], env=kwargs['env'])

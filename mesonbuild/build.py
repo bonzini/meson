@@ -2089,7 +2089,7 @@ class Generator(HoldableObject):
             env=env if env is not None else EnvironmentVariables())
 
         for e in files:
-            if isinstance(e, (CustomTarget, CustomTargetIndex)):
+            if isinstance(e, (BuildTarget, CustomTarget, CustomTargetIndex)):
                 output.depends.add(e)
                 fs = [File.from_built_file(e.get_builddir(), f) for f in e.get_outputs()]
             elif isinstance(e, GeneratedList):
@@ -2125,7 +2125,7 @@ class GeneratedList(HoldableObject):
 
     def __post_init__(self) -> None:
         self.name = self.generator.exe
-        self.depends: T.Set[GeneratedTypes] = set()
+        self.depends: T.Set[T.Union[GeneratedTypes, BuildTarget]] = set()
         self.infilelist: T.List[FileMaybeInTargetPrivateDir] = []
         self.outfilelist: T.List[str] = []
         self.outmap: T.Dict[FileMaybeInTargetPrivateDir, T.List[str]] = {}
