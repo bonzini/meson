@@ -2860,7 +2860,10 @@ class SharedModule(SharedLibrary):
     def determine_naming_info(self) -> T.Tuple[str, str, str, str, bool]:
         scheme = self.environment.coredata.get_option_for_target(self, 'namingscheme')
         assert isinstance(scheme, str), 'for mypy'
-        if scheme != 'platform' or 'cs' in self.compilers:
+        # On iOS, shared modules use -dynamiclib rather than -bundle,
+        # so keep the .dylib suffix.
+        if scheme != 'platform' or 'cs' in self.compilers \
+                or self.environment.machines[self.for_machine].system == 'ios':
             return super().determine_naming_info()
 
         schemename = self.get_platform_scheme_name()
