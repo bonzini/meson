@@ -244,6 +244,13 @@ DEFAULT_SHARED_LIBRARY_NAMES: T.Mapping[str, T.Tuple[str, str, str]] = {
     'cygwin': ('cyg', 'dll', 'dll.a'),
 }
 
+DEFAULT_SHARED_MODULE_NAMES: T.Mapping[str, T.Tuple[str, str]] = {
+    'unix': ('lib', 'so'),
+    'windows': ('', 'dll'),
+    'darwin': ('lib', 'so'),
+    'cygwin': ('', 'dll'),
+}
+
 def _process_install_tag(install_tag: T.Optional[T.List[T.Optional[str]]],
                          num_outputs: int) -> T.List[T.Optional[str]]:
     _install_tag: T.List[T.Optional[str]]
@@ -2970,6 +2977,19 @@ class SharedModule(SharedLibrary):
         # We need to set the soname in cases where build files link the module
         # to build targets, see: https://github.com/mesonbuild/meson/issues/9492
         self.force_soname = False
+
+    def determine_naming_info(self) -> T.Tuple[str, str, str, str, bool]:
+        scheme = self.environment.coredata.get_option_for_target(self, 'namingscheme')
+        assert isinstance(scheme, str), 'for mypy'
+        # On iOS, shared modules use -dynamiclib rather than -bundle,
+        # so keep the .dylib suffix.
+        if scheme != 'platform' or 'cs' in self.compilers \
+                or self.environment.machines[self.for_machine].system == 'ios':
+            return super().determine_naming_info()
+
+        schemename = self.get_platform_scheme_name()
+        prefix, suffix = DEFAULT_SHARED_MODULE_NAMES[schemename]
+        return (prefix, suffix, self.basic_filename_tpl, None, False)
 
     def get_default_install_dir(self) -> T.Tuple[str, str]:
         return self.environment.get_shared_module_dir(), '{moduledir_shared}'
