@@ -36,7 +36,7 @@ if T.TYPE_CHECKING:
 # instances of these classes.
 
 
-known_cpu_families = (
+KNOWN_CPU_FAMILIES = frozenset({
     'aarch64',
     'alpha',
     'arc',
@@ -75,7 +75,7 @@ known_cpu_families = (
     'x86',
     'x86_64',
     'tricore'
-)
+})
 
 KNOWN_SYSTEMS = frozenset({
     'aix',
@@ -96,7 +96,7 @@ KNOWN_SYSTEMS = frozenset({
 
 # It would feel more natural to call this "64_BIT_CPU_FAMILIES", but
 # python identifiers cannot start with numbers
-CPU_FAMILIES_64_BIT = [
+CPU_FAMILIES_64_BIT = frozenset({
     'aarch64',
     'alpha',
     'ia64',
@@ -109,7 +109,7 @@ CPU_FAMILIES_64_BIT = [
     'sw_64',
     'wasm64',
     'x86_64',
-]
+})
 
 # Map from language identifiers to environment variables.
 ENV_VAR_COMPILER_MAP: T.Mapping[str, ImmutableListProtocol[str]] = {
@@ -310,8 +310,8 @@ class MachineInfo(HoldableObject):
                 'but is missing {}.'.format(minimum_literal - set(literal)))
 
         cpu_family = literal['cpu_family']
-        if cpu_family not in known_cpu_families:
-            mlog.warning(f'Unknown CPU family {cpu_family}, please report this at https://github.com/mesonbuild/meson/issues/new')
+        if cpu_family not in KNOWN_CPU_FAMILIES:
+            mlog.warning(f'Unknown CPU family {cpu_family}, please report this at https://github.com/mesonbuild/meson/issues/new', fatal=False)
 
         endian = literal['endian']
         if endian not in ('little', 'big'):
@@ -319,7 +319,7 @@ class MachineInfo(HoldableObject):
 
         system = literal['system']
         if system not in KNOWN_SYSTEMS:
-            mlog.warning(f'Unknown system {system}, please report this at https://github.com/mesonbuild/meson/issues/new')
+            mlog.warning(f'Unknown system {system}, please report this at https://github.com/mesonbuild/meson/issues/new', fatal=False)
         kernel = literal.get('kernel', None)
         subsystem = literal.get('subsystem', None)
 
@@ -674,10 +674,10 @@ def detect_cpu_family(compilers: CompilerDict) -> str:
         if compilers and not any_compiler_has_define(compilers, '__mips64'):
             trial = 'mips'
 
-    if trial not in known_cpu_families:
+    if trial not in KNOWN_CPU_FAMILIES:
         mlog.warning(f'Unknown CPU family {trial!r}, please report this at '
                      'https://github.com/mesonbuild/meson/issues/new with the '
-                     'output of `uname -a` and `cat /proc/cpuinfo`')
+                     'output of `uname -a` and `cat /proc/cpuinfo`', fatal=False)
 
     return trial
 
@@ -739,7 +739,7 @@ def detect_kernel(system: str) -> T.Optional[str]:
         out = out.lower().strip()
         if out not in {'illumos', 'solaris'}:
             mlog.warning(f'Got an unexpected value for kernel on a SunOS derived platform, expected either "illumos" or "solaris", but got "{out}".'
-                         "Please open a Meson issue with the OS you're running and the value detected for your kernel.")
+                         "Please open a Meson issue with the OS you're running and the value detected for your kernel.", fatal=False)
             return None
         return out
     return KERNEL_MAPPINGS.get(system, None)
