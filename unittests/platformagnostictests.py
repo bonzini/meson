@@ -11,11 +11,13 @@ import tempfile
 import subprocess
 import textwrap
 import shutil
+import tarfile
 from unittest import skipIf, SkipTest
 from pathlib import Path
 
+from .allplatformstests import git_init
 from .baseplatformtests import BasePlatformTests
-from .helpers import skip_if_not_language, IS_CI
+from .helpers import skip_if_not_language, skipIfNoExecutable, IS_CI
 from mesonbuild.mesonlib import EnvironmentVariables, ExecutableSerialisation, MesonException, is_linux, python_command, windows_proof_rmtree
 from mesonbuild.mformat import Formatter, match_path
 from mesonbuild.interpreterbase import InvalidArguments
@@ -124,6 +126,25 @@ class PlatformAgnosticTests(BasePlatformTests):
         # Check if message is written to the meson log
         mesonlog = self.get_meson_log_raw()
         self.assertIn(log_msg, mesonlog)
+
+    @skipIfNoExecutable('git')
+    def test_dist_args(self):
+        if self.backend is not Backend.ninja:
+            raise SkipTest('Dist is only supported with Ninja')
+
+        testdir = os.path.join(self.unit_test_dir, '141 add dist args')
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_dir = os.path.join(tmpdir, 'source')
+            shutil.copytree(testdir, project_dir, ignore=shutil.ignore_patterns('__pycache__'))
+            git_init(project_dir)
+
+            self.init(project_dir, extra_args=['-Dbuildtype=debug'])
+            self._run(self.meson_command + ['dist', '--formats=gztar'], workdir=self.builddir)
+
+            distfile = Path(self.distdir, 'add-dist-args-1.0.tar.gz')
+            self.assertPathExists(distfile)
+            with tarfile.open(distfile, 'r:gz') as archive:
+                self.assertIn('add-dist-args-1.0/distcheck.txt', archive.getnames())
 
     def test_new_subproject_reconfigure(self):
         testdir = os.path.join(self.unit_test_dir, '108 new subproject on reconfigure')

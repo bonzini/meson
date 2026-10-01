@@ -410,10 +410,11 @@ def run(options: argparse.Namespace) -> int:
     if options.reuse_setup_args or options.no_reuse_setup_args:
         reuse_setup_args = options.reuse_setup_args
     else:
-        reuse_setup_args = not options.SETUP_ARGS
+        reuse_setup_args = not b.dist_args_exclusive and not options.SETUP_ARGS
 
     if reuse_setup_args:
         extra_meson_args += create_cmdline_args(bld_root)
+    extra_meson_args += (b.dist_args_exclusive or b.dist_args)[1:]
     extra_meson_args += options.SETUP_ARGS
 
     if options.include_subprojects:

@@ -19,7 +19,7 @@ from ..interpreter.type_checking import (
     ENV_METHOD_KW, ENV_SEPARATOR_KW, ENV_PARG, env_convertor,
 )
 from ..interpreterbase import (MesonInterpreterObject, FeatureNew, FeatureDeprecated, FeatureBroken,
-                               noArgsFlattening,
+                               InvalidArguments, noArgsFlattening,
                                TypedArgs, KwargInfo, InterpreterException, InterpreterObject,
                                PosArgInfo, VarArgInfo)
 from .decorators import apply_machine_map
@@ -50,6 +50,9 @@ if T.TYPE_CHECKING:
     class AddDevenvKW(TypedDict):
         method: Literal['set', 'prepend', 'append']
         separator: str
+
+    class AddDistArgsKW(TypedDict):
+        overwrite: bool
 
 
 _BUILT_PROG_PARG = PosArgInfo(
@@ -169,6 +172,24 @@ class MesonMain(MesonInterpreterObject):
         script_args = self._process_script_args('add_postconf_script', args[1])
         script = self._find_source_script('add_postconf_script', args[0], script_args)
         self.build.postconf_scripts.append(script)
+
+    @FeatureNew('meson.add_dist_args', '0.63.0')
+    @TypedArgs(
+        'meson.add_dist_args',
+        var_types=VarArgInfo(str, min_args=1),
+        kw_types=[KwargInfo('overwrite', bool, default=False)],
+    )
+    @InterpreterObject.method('add_dist_args')
+    def add_dist_args_method(self, args: T.Tuple[T.List[str]], kwargs: AddDistArgsKW) -> None:
+        if kwargs['overwrite']:
+            if self.build.dist_args or self.build.dist_args_exclusive:
+                raise InvalidArguments('meson.add_dist_args can only be used once if overwrite is true')
+            to = self.build.dist_args_exclusive
+        else:
+            to = self.build.dist_args
+        if not to:
+            to.append('--')
+        to.extend(args[0])
 
     @TypedArgs(
         'meson.add_dist_script',
