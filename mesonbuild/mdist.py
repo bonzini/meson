@@ -61,6 +61,17 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument('-j', '--num-processes', default=determine_worker_count(), type=int,
                         help='How many parallel processes to use (e.g. for compilation and testing).')
 
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--reuse-setup-args', action='store_true',
+                       help='Look up and reuse the original configured arguments when configuring the tests.'
+                            ' (The default when additional arguments are not passed explicitly.)')
+    group.add_argument('--no-reuse-setup-args', action='store_true',
+                       help='Do not look up and reuse the original configured arguments when configuring the tests.'
+                            ' (The default when additional arguments are passed explicitly.)')
+
+    parser.add_argument('SETUP_ARGS', nargs='*',
+                        help='Additional options passed after -- which will be forwarded to configure the tests.')
+
 
 def create_hash(fname: str) -> None:
     hashname = fname + '.sha256sum'
@@ -345,7 +356,6 @@ def check_dist(packagename: str, _meson_command: ImmutableListProtocol[str], ext
     unpacked_src_dir = unpacked_files[0]
     meson_command = _meson_command.copy()
     meson_command += ['setup']
-    meson_command += create_cmdline_args(bld_root)
     meson_command += extra_meson_args
 
     ret = run_dist_steps(meson_command, unpacked_src_dir, builddir, installdir, ninja_args)
@@ -396,6 +406,16 @@ def run(options: argparse.Namespace) -> int:
 
     subprojects: T.Dict[SubProject, str] = {}
     extra_meson_args = []
+
+    if options.reuse_setup_args or options.no_reuse_setup_args:
+        reuse_setup_args = options.reuse_setup_args
+    else:
+        reuse_setup_args = not options.SETUP_ARGS
+
+    if reuse_setup_args:
+        extra_meson_args += create_cmdline_args(bld_root)
+    extra_meson_args += options.SETUP_ARGS
+
     if options.include_subprojects:
         resolver = wrap.Resolver(src_root, b.subproject_dir, silent=True)
         for sub in set(itertools.chain(b.projects.host, b.projects.build)):
