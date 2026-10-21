@@ -2227,7 +2227,12 @@ class NinjaBackend(backends.Backend):
                 if prev == '-framework':
                     args.append(f'-lframework={a}')
                     continue
-                elif a.startswith('-L'):
+                elif a.startswith('-l:'):
+                    # go through _link_library so that +verbatim is applied
+                    static = a.endswith(('.a', '.lib'))
+                    _link_library(a[3:], static)
+                    continue
+                elif a.startswith('-L') or a.startswith('-l'):
                     args.append(a)
                     continue
                 elif a.startswith('-F'):
