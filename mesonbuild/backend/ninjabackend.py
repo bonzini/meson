@@ -29,13 +29,13 @@ from .. import mlog
 from .. import compilers
 from .. import tooldetect
 from ..arglist import CompilerArgs
-from ..compilers import Compiler, is_library
-from ..linkers import ArLikeLinker, StaticLinker, VisualStudioLikeLinkerMixin
+from ..compilers import Compiler
+from ..linkers import ArLikeLinker, StaticLinker
 from ..mesonlib import (
     File, LibType, MachineChoice, MesonBugException, MesonException, OrderedSet, PerMachine,
     ProgressBar, quote_arg, unique_list, cmd_quote
 )
-from ..mesonlib import as_posix, get_compiler_for_source, has_path_sep, is_parent_path, lookbehind, path_has_root
+from ..mesonlib import as_posix, get_compiler_for_source, has_path_sep, is_parent_path, path_has_root
 from ..options import OptionKey
 from ..build import GeneratedList, InvalidArguments
 
@@ -2099,34 +2099,6 @@ class NinjaBackend(backends.Backend):
         deps: T.List[str] = []
         project_deps: T.List[RustDep] = []
         args: T.List[str] = []
-        linked_deps: T.Set[str] = set()
-
-        def _link_library(libname: str, static: bool, bundle: bool = False) -> None:
-            # rustc will fail with "overriding link modifiers from
-            # command line is not supported" if a modifier is applied
-            # and the library appears more than once
-            if libname in linked_deps:
-                return
-            linked_deps.add(libname)
-
-            orig_libname = libname
-            type_ = 'static' if static else 'dylib'
-            modifiers = []
-            # Except with -Clink-arg, search is limited to the -L search paths
-            dir_, libname = os.path.split(libname)
-            linkdirs.add(dir_)
-            if not bundle and static:
-                modifiers.append('-bundle')
-            if rustc.has_verbatim():
-                modifiers.append('+verbatim')
-            else:
-                libname = rustc.lib_file_to_l_arg(libname)
-                if libname is None:
-                    raise MesonException(f"rustc does not implement '-l{type_}:+verbatim'; cannot link to '{orig_libname}' due to nonstandard name")
-
-            if modifiers:
-                type_ += ':' + ','.join(modifiers)
-            args.append(f'-l{type_}={libname}')
 
         for o in obj_list:
             args.append(f'-Clink-arg={o}')
@@ -2152,74 +2124,15 @@ class NinjaBackend(backends.Backend):
             args += ['--extern', '{}={}'.format(d_name, self.get_target_filename(d))]
             project_deps.append(RustDep(d_name, self.rust_crates[d.name].order))
 
+        from ..compilers.rust import RustLinkArgs
+        native = RustLinkArgs(rustc, linkdirs, target.rust_crate_type)
         for d in native_deps:
-            # Link a C ABI library
-
-            # Pass native libraries directly to the linker with "-C link-arg"
-            # because rustc's "-l:+verbatim=" is not portable and we cannot rely
-            # on linker to find the right library without using verbatim filename.
-            # For example "-lfoo" won't find "foo.so" in the case name_prefix set
-            # to "", or would always pick the shared library when both "libfoo.so"
-            # and "libfoo.a" are available.
-            # See https://doc.rust-lang.org/rustc/command-line-arguments.html#linking-modifiers-verbatim.
-            #
-            # However, rustc static linker (rlib and staticlib) requires using
-            # "-l" argument and does not rely on platform specific dynamic linker.
-            lib = self.get_target_filename_for_linking(d)
-            link_whole = d in target.link_whole_targets
-            if isinstance(target, build.StaticLibrary) or (isinstance(target, build.Executable) and rustc.get_crt_static()):
-                static = isinstance(d, build.StaticLibrary)
-                _link_library(lib, static, bundle=link_whole)
-            elif link_whole:
-                link_whole_args = rustc.linker.get_link_whole_for([lib])
-                args += [f'-Clink-arg={a}' for a in link_whole_args]
-            else:
-                args.append(f'-Clink-arg={lib}')
-
+            native.add_target_library(self.get_target_filename_for_linking(d),
+                                      static=isinstance(d, build.StaticLibrary),
+                                      link_whole=d in target.link_whole_targets)
         for e in external_deps:
-            prev: T.Optional[str] = None
-            for prev, a in lookbehind(e.get_link_args()):
-                # If the same library appears as -l foo and foo.lib, rustc
-                # receives it twice with different modifiers and fails with
-                # "overriding link modifiers from command line is not supported".
-                # Convert -lfoo to foo.lib, like unix_args_to_native() does for
-                # non-Rust targets, so that both forms are handled the same way
-                # below and passed to _link_library().  Unlike unix_args_to_native()
-                # -L is not converted to /LIBPATH because rustc knows it.
-                if a.startswith('-l') and isinstance(rustc.linker, VisualStudioLikeLinkerMixin):
-                    from ..compilers.mixins.visualstudio import VisualStudioLikeCompiler
-                    name = a[2:]
-                    if name in VisualStudioLikeCompiler.ignore_libs:
-                        continue
-                    a = name + '.lib'
-
-                if prev == '-framework':
-                    args.append(f'-lframework={a}')
-                    continue
-                elif a.startswith('-L'):
-                    args.append(a)
-                    continue
-                elif a.startswith('-F'):
-                    path = a[2:]
-                    args.append(f'-Lframework={path}')
-                    continue
-                elif a == '-framework':
-                    # handled once the framework name is available
-                    continue
-                elif is_library(a):
-                    if isinstance(target, build.StaticLibrary):
-                        static = a.endswith(('.a', '.lib'))
-                        _link_library(a, static)
-                        continue
-
-                    dir_, _ = os.path.split(a)
-                    linkdirs.add(dir_)
-
-                args.append(f'-Clink-arg={a}')
-
-        for d in linkdirs:
-            d = d or '.'
-            args.append(f'-L{d}')
+            native.add_external_link_args(e.get_link_args())
+        args += native.get_args()
 
         # Because of the way rustc links, this must come after any potential
         # library need to link with their stdlibs (C++ and Fortran, for example)

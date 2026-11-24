@@ -13,7 +13,10 @@ import typing as T
 
 from .. import options
 from ..dependencies import InternalDependency
-from ..mesonlib import EnvironmentException, MesonException, Popen_safe, Popen_safe_logged, version_compare
+from ..mesonlib import (
+    EnvironmentException, MesonException, OrderedSet, Popen_safe, Popen_safe_logged, lookbehind,
+    version_compare
+)
 from ..linkers.linkers import VisualStudioLikeLinkerMixin
 from ..options import OptionKey
 from .compilers import Compiler, CompileCheckMode, clike_debug_args, is_library
@@ -332,31 +335,6 @@ class RustCompiler(Compiler):
         # equivalent of --whole-archive), receives the full path to the library
         # being linked.  However, Meson uses "bundle", not "whole_archive".
         return False
-
-    def lib_file_to_l_arg(self, libname: str) -> T.Optional[str]:
-        """Undo the effects of -l on the filename, returning the
-           argument that can be passed to -l, or None if the
-           library name is not supported."""
-        if not is_library(libname):
-            return None
-        libname, ext = os.path.splitext(libname)
-
-        # On Windows, rustc's -lfoo searches either foo.lib or libfoo.a.
-        # Elsewhere, it searches both static and shared libraries and always with
-        # the "lib" prefix; for simplicity just skip .lib on non-Windows.
-        if self.info.is_windows():
-            if ext == '.lib':
-                return libname
-            if ext != '.a':
-                return None
-        else:
-            if ext == '.lib':
-                return None
-
-        if not libname.startswith('lib'):
-            return None
-        libname = libname[3:]
-        return libname
 
     def has_define(self, dname: str, prefix: str,
                    extra_args: T.Union[T.List[str], T.Callable[[CompileCheckMode], T.List[str]]],
@@ -728,3 +706,167 @@ class RustdocTestCompiler(RustCompiler):
 
     def get_output_args(self, outputname: str) -> T.List[str]:
         return []
+
+
+class RustLinkArgs:
+    """Builder for the rustc arguments that link a target with C ABI libraries.
+
+    Libraries are passed either with -l, so that rustc finds them
+    itself, or with -Clink-arg, so that they go directly to the linker.
+    -Clink-arg is preferred because it passes the exact file name, and
+    is portable unlike "-l:+verbatim=", but it cannot be used in two cases:
+
+    - for rlib and staticlib crates, because rustc does not run a linker
+      for them and ignores -Clink-arg;
+
+    - for executables that link the C runtime statically, so that rustc
+      places the libraries before the static libc.
+
+    rustc fails with "overriding link modifiers from command line is not
+    supported" if the same library is passed twice with -l, so record
+    the libraries that have been passed with -l.
+
+    Also collect the directories that rustc must search, and add them
+    to the arguments.
+    """
+
+    def __init__(self, rustc: RustCompiler, linkdirs: T.Iterable[str],
+                 rust_crate_type: str) -> None:
+        """Create a builder for a target of type rust_crate_type compiled with rustc."""
+        self.rustc = rustc
+        # rustc creates an rlib or staticlib itself and does not run a linker.
+        self.archive = rust_crate_type in {'rlib', 'staticlib'}
+        # rustc creates an executable that links the C runtime statically.
+        self.crt_static = rust_crate_type == 'bin' and rustc.get_crt_static()
+        self.args: T.List[str] = []
+        self.linkdirs: OrderedSet[str] = OrderedSet(linkdirs)
+        self.linked_deps: T.Set[str] = set()
+
+    def _lib_file_to_l_arg(self, libname: str) -> T.Optional[str]:
+        """Undo the effects of -l on the filename, returning the
+           argument that can be passed to -l, or None if the
+           library name is not supported."""
+        if not is_library(libname):
+            return None
+        libname, ext = os.path.splitext(libname)
+
+        # On Windows, rustc's -lfoo searches either foo.lib or libfoo.a.
+        # Elsewhere, it searches both static and shared libraries and always with
+        # the "lib" prefix; for simplicity just skip .lib on non-Windows.
+        if self.rustc.info.is_windows():
+            if ext == '.lib':
+                return libname
+            if ext != '.a':
+                return None
+        else:
+            if ext == '.lib':
+                return None
+
+        if not libname.startswith('lib'):
+            return None
+        libname = libname[3:]
+        return libname
+
+    def link_library(self, libname: str, static: bool, bundle: bool = False) -> None:
+        # rustc will fail with "overriding link modifiers from
+        # command line is not supported" if a modifier is applied
+        # and the library appears more than once
+        if libname in self.linked_deps:
+            return
+        self.linked_deps.add(libname)
+
+        orig_libname = libname
+        type_ = 'static' if static else 'dylib'
+        modifiers = []
+        # Except with -Clink-arg, search is limited to the -L search paths
+        dir_, libname = os.path.split(libname)
+        self.linkdirs.add(dir_)
+        if not bundle and static:
+            modifiers.append('-bundle')
+        if self.rustc.has_verbatim():
+            modifiers.append('+verbatim')
+        else:
+            libname = self._lib_file_to_l_arg(libname)
+            if libname is None:
+                raise MesonException(f"rustc does not implement '-l{type_}:+verbatim'; cannot link to '{orig_libname}' due to nonstandard name")
+
+        if modifiers:
+            type_ += ':' + ','.join(modifiers)
+        self.args.append(f'-l{type_}={libname}')
+
+    def add_target_library(self, lib: str, static: bool, link_whole: bool) -> None:
+        """Link with a C ABI library built by Meson.
+
+        lib is the path of the file to link with, and static is true for a static library.
+        """
+        # Pass native libraries directly to the linker with "-C link-arg"
+        # because rustc's "-l:+verbatim=" is not portable and we cannot rely
+        # on linker to find the right library without using verbatim filename.
+        # For example "-lfoo" won't find "foo.so" in the case name_prefix set
+        # to "", or would always pick the shared library when both "libfoo.so"
+        # and "libfoo.a" are available.
+        # See https://doc.rust-lang.org/rustc/command-line-arguments.html#linking-modifiers-verbatim.
+        #
+        # However, rustc static linker (rlib and staticlib) requires using
+        # "-l" argument and does not rely on platform specific dynamic linker.
+        if self.archive or self.crt_static:
+            self.link_library(lib, static, bundle=link_whole)
+        elif link_whole:
+            link_whole_args = self.rustc.linker.get_link_whole_for([lib])
+            self.args += [f'-Clink-arg={a}' for a in link_whole_args]
+        else:
+            self.args.append(f'-Clink-arg={lib}')
+
+    def add_external_link_args(self, link_args: T.List[str]) -> None:
+        """Link with the libraries of an external dependency.
+
+        link_args contains GNU-style linker arguments, as returned by
+        Dependency.get_link_args().
+        """
+        prev: T.Optional[str] = None
+        for prev, a in lookbehind(link_args):
+            # If the same library appears as -l foo and foo.lib, rustc
+            # receives it twice with different modifiers and fails with
+            # "overriding link modifiers from command line is not supported".
+            # Convert -lfoo to foo.lib, like unix_args_to_native() does for
+            # non-Rust targets, so that both forms are handled the same way
+            # below and passed to link_library().  Unlike unix_args_to_native()
+            # -L is not converted to /LIBPATH because rustc knows it.
+            if a.startswith('-l') and isinstance(self.rustc.linker, VisualStudioLikeLinkerMixin):
+                from .mixins.visualstudio import VisualStudioLikeCompiler
+                name = a[2:]
+                if name in VisualStudioLikeCompiler.ignore_libs:
+                    continue
+                a = name + '.lib'
+
+            if prev == '-framework':
+                self.args.append(f'-lframework={a}')
+                continue
+            elif a.startswith('-L'):
+                self.args.append(a)
+                continue
+            elif a.startswith('-F'):
+                path = a[2:]
+                self.args.append(f'-Lframework={path}')
+                continue
+            elif a == '-framework':
+                # handled once the framework name is available
+                continue
+            elif is_library(a):
+                if self.archive:
+                    static = a.endswith(('.a', '.lib'))
+                    self.link_library(a, static)
+                    continue
+
+                dir_, _ = os.path.split(a)
+                self.linkdirs.add(dir_)
+
+            self.args.append(f'-Clink-arg={a}')
+
+    def get_args(self) -> T.List[str]:
+        """Return the arguments, followed by -L for each directory that rustc must search."""
+        args = self.args.copy()
+        for d in self.linkdirs:
+            d = d or '.'
+            args.append(f'-L{d}')
+        return args
