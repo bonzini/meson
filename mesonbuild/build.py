@@ -1907,6 +1907,28 @@ class BuildTarget(Target, BuildTargetProto):
     def uses_rust_abi(self) -> bool:
         return self.uses_rust() and self.rust_crate_type in {'dylib', 'rlib', 'proc-macro'}
 
+    def classify_dependencies_for_rustc(self) -> T.Tuple[T.List[BuildTarget],
+                                                         T.List[BuildTargetProto],
+                                                         T.List[dependencies.Dependency]]:
+        """Split the dependencies of a target linked by rustc by how they are passed to rustc.
+           C ABI dependencies, inclding external dependencies of static libraries,
+           need to be passed via -l or -Clink-arg=, while direct Rust ABI dependencies
+           need to be passed with --extern.
+        """
+        rust_deps: T.List[BuildTarget] = []
+        native_deps: T.List[BuildTargetProto] = []
+        external_deps = self.external_deps.copy()
+        for d in self.get_dependencies():
+            if isinstance(d, StaticLibrary):
+                external_deps.extend(d.external_deps)
+            if d.uses_rust_abi():
+                if d in self.link_targets or d in self.link_whole_targets:
+                    assert isinstance(d, BuildTarget)
+                    rust_deps.append(d)
+            else:
+                native_deps.append(d)
+        return rust_deps, native_deps, external_deps
+
     def uses_fortran(self) -> bool:
         return 'fortran' in self.compilers
 

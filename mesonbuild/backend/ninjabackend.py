@@ -2135,32 +2135,24 @@ class NinjaBackend(backends.Backend):
         deps.extend([self.get_dependency_filename(t) for t in target.link_depends])
 
         linkdirs: OrderedSet[str] = OrderedSet()
-        external_deps = target.external_deps.copy()
         target_deps = target.get_dependencies()
         for d in target_deps:
             # rlibs only store -l flags, not -L; help out rustc and always
             # add the -L flag, in case it's needed to find non-bundled
-            # dependencies of an rlib.  At this point we don't have
-            # information on whether this is a direct dependency (which
-            # might use -Clink-arg= below) or an indirect one, so always
-            # add to linkdirs.
+            # dependencies of an rlib.
             linkdirs.add(self.get_target_dir(d))
             deps.append(self.get_dependency_filename(d))
-            if isinstance(d, build.StaticLibrary):
-                external_deps.extend(d.external_deps)
-            if d.uses_rust_abi():
-                if d not in target.link_targets and d not in target.link_whole_targets:
-                    # Indirect Rust ABI dependency, we only need its path in linkdirs.
-                    continue
-                assert isinstance(d, build.BuildTarget)
-                # specify `extern CRATE_NAME=OUTPUT_FILE` for each Rust
-                # dependency, so that collisions with libraries in rustc's
-                # sysroot don't cause ambiguity
-                d_name = self._get_rust_dependency_name(target, d)
-                args += ['--extern', '{}={}'.format(d_name, self.get_target_filename(d))]
-                project_deps.append(RustDep(d_name, self.rust_crates[d.name].order))
-                continue
 
+        rust_deps, native_deps, external_deps = target.classify_dependencies_for_rustc()
+        for d in rust_deps:
+            # specify `extern CRATE_NAME=OUTPUT_FILE` for each Rust
+            # dependency, so that collisions with libraries in rustc's
+            # sysroot don't cause ambiguity
+            d_name = self._get_rust_dependency_name(target, d)
+            args += ['--extern', '{}={}'.format(d_name, self.get_target_filename(d))]
+            project_deps.append(RustDep(d_name, self.rust_crates[d.name].order))
+
+        for d in native_deps:
             # Link a C ABI library
 
             # Pass native libraries directly to the linker with "-C link-arg"
