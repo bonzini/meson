@@ -767,7 +767,7 @@ class RustLinkArgs:
         libname = libname[3:]
         return libname
 
-    def link_library(self, libname: str, static: bool, bundle: bool = False) -> None:
+    def link_library(self, libname: str, static: bool, link_whole: bool = False) -> None:
         # rustc will fail with "overriding link modifiers from
         # command line is not supported" if a modifier is applied
         # and the library appears more than once
@@ -782,15 +782,25 @@ class RustLinkArgs:
         dir_, libname = os.path.split(libname)
         self.linkdirs.add(dir_)
 
-        # When rustc creates an rlib or staticlib, "+bundle" (the default for
-        # static libraries) copies the objects of the native library into the
-        # archive.  This is equivalent to whole-archive linking, so use
-        # "-bundle" and pass the native library to the final link itself.
-        # With "-bundle", an rlib only records the library name, and the
-        # final link looks the library up in its -L paths (which is why -L
-        # has to be added for indirect dependencies as well).
-        if not bundle and static:
-            modifiers.append('-bundle')
+        if self.archive:
+            # When rustc creates an rlib or staticlib, "+bundle" (the default for
+            # static libraries) copies the objects of the native library into the
+            # archive.  This is equivalent to whole-archive linking, so use
+            # "-bundle" and pass the native library to the final link itself.
+            # With "-bundle", an rlib only records the library name, and the
+            # final link looks the library up in its -L paths (which is why -L
+            # has to be added for indirect dependencies as well).
+            if static and not link_whole:
+                modifiers.append('-bundle')
+        else:
+            # Executables are not archives, so bundling does not apply to them.
+            # Use "+whole-archive" instead.
+            if static and link_whole:
+                if version_compare(self.rustc.version, '< 1.61.0'):
+                    raise MesonException(f"rustc {self.rustc.version} does not implement '-lstatic:+whole-archive'; "
+                                         f"cannot link whole '{orig_libname}'")
+                modifiers.append('+whole-archive')
+
         if self.rustc.has_verbatim():
             modifiers.append('+verbatim')
         else:
@@ -823,7 +833,7 @@ class RustLinkArgs:
         # libraries can come after it; in that case the linker does not resolve
         # their references to libc.
         if self.archive or self.crt_static:
-            self.link_library(lib, static, bundle=link_whole)
+            self.link_library(lib, static, link_whole=link_whole)
         elif link_whole:
             link_whole_args = self.rustc.linker.get_link_whole_for([lib])
             self.args += [f'-Clink-arg={a}' for a in link_whole_args]
