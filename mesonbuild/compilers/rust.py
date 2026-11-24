@@ -781,6 +781,14 @@ class RustLinkArgs:
         # Except with -Clink-arg, search is limited to the -L search paths
         dir_, libname = os.path.split(libname)
         self.linkdirs.add(dir_)
+
+        # When rustc creates an rlib or staticlib, "+bundle" (the default for
+        # static libraries) copies the objects of the native library into the
+        # archive.  This is equivalent to whole-archive linking, so use
+        # "-bundle" and pass the native library to the final link itself.
+        # With "-bundle", an rlib only records the library name, and the
+        # final link looks the library up in its -L paths (which is why -L
+        # has to be added for indirect dependencies as well).
         if not bundle and static:
             modifiers.append('-bundle')
         if self.rustc.has_verbatim():
@@ -809,6 +817,11 @@ class RustLinkArgs:
         #
         # However, rustc static linker (rlib and staticlib) requires using
         # "-l" argument and does not rely on platform specific dynamic linker.
+        #
+        # Executables that link the C runtime statically also use "-l".  rustc
+        # places "-l" libraries before the static libc, while "-Clink-arg"
+        # libraries can come after it; in that case the linker does not resolve
+        # their references to libc.
         if self.archive or self.crt_static:
             self.link_library(lib, static, bundle=link_whole)
         elif link_whole:
